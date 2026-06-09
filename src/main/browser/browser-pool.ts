@@ -186,13 +186,15 @@ export class BrowserPool {
 
     const win = new BrowserWindow({
       show,
+      paintWhenInitiallyHidden: true,
       width: 1024,
       height: 768,
       webPreferences: {
         partition: profile.partition,
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: true
+        sandbox: true,
+        backgroundThrottling: false
       }
     })
 

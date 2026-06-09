@@ -13,38 +13,17 @@ function buildInboxUrl(email: string): string {
   return `${BASE_URL}/mailbox#${email}`
 }
 
-interface EmailnatorSession {
-  cookieHeader: string
-  xsrfToken: string
-}
-
-function parseSetCookie(value: string | null): string[] {
-  if (!value) return []
-  return value
-    .split(/,(?=\s*[^;=]+=[^;]+)/g)
-    .map((part) => part.split(';')[0].trim())
-    .filter(Boolean)
-}
-
-function getCookieValue(cookies: string[], name: string): string {
-  const cookie = cookies.find((item) => item.startsWith(`${name}=`))
-  return cookie ? cookie.slice(name.length + 1) : ''
-}
-
 function extractEmail(data: EmailnatorGenerateResponse): string | null {
   const email = data.email?.find((item) => item.includes('@'))
   return email ?? null
 }
 
 export class EmailnatorClient {
-  private session?: EmailnatorSession
   private previewWindow?: BrowserWindow
 
   constructor(private proxyManager: ProxyManager) {}
 
   private async updatePreview(ctx: JobContext, status: string): Promise<void> {
-    if (ctx.headless) return
-
     if (!this.previewWindow || this.previewWindow.isDestroyed()) {
       const partition = `emailnator-preview:${ctx.jobId}`
       const ses = electronSession.fromPartition(partition)
@@ -52,7 +31,8 @@ export class EmailnatorClient {
         await this.proxyManager.applyToSession(ses, ctx.proxy)
       }
       this.previewWindow = new BrowserWindow({
-        show: true,
+        show: !ctx.headless,
+        paintWhenInitiallyHidden: true,
         width: 960,
         height: 720,
         title: 'Emailnator Preview',
@@ -60,13 +40,16 @@ export class EmailnatorClient {
           partition,
           contextIsolation: true,
           nodeIntegration: false,
-          sandbox: true
+          sandbox: true,
+          backgroundThrottling: false
         }
       })
       await this.previewWindow.loadURL(BASE_URL)
     }
 
-    this.previewWindow.show()
+    if (!ctx.headless) {
+      this.previewWindow.show()
+    }
     const script = `(() => {
       const id = 'auto-register-emailnator-status';
       let el = document.getElementById(id);
@@ -90,69 +73,8 @@ export class EmailnatorClient {
     return this.previewWindow
   }
 
-  private async getSession(ctx: JobContext): Promise<EmailnatorSession> {
-    if (this.session) return this.session
-
-    await this.updatePreview(ctx, 'Opening Emailnator...')
-
-    const dispatcher = this.proxyManager.createFetchDispatcher(ctx.proxy)
-    const res = await fetch(`${BASE_URL}/`, {
-      headers: {
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        Referer: `${BASE_URL}/`
-      },
-      dispatcher,
-      signal: ctx.abortSignal
-    } as RequestInit)
-
-    if (!res.ok) {
-      throw new Error(`Emailnator session failed (${res.status})`)
-    }
-
-    const cookies = parseSetCookie(res.headers.get('set-cookie'))
-    const xsrfToken = decodeURIComponent(getCookieValue(cookies, 'XSRF-TOKEN'))
-    const cookieHeader = cookies.join('; ')
-    if (!xsrfToken || !cookieHeader) {
-      throw new Error('Emailnator session did not include CSRF cookies')
-    }
-
-    this.session = { cookieHeader, xsrfToken }
-    await this.updatePreview(ctx, 'Emailnator session ready')
-    return this.session
-  }
-
   private async postText(ctx: JobContext, path: string, body: unknown): Promise<string> {
-    if (!ctx.headless) {
-      return this.postTextFromPage(ctx, path, body)
-    }
-
-    const session = await this.getSession(ctx)
-    const dispatcher = this.proxyManager.createFetchDispatcher(ctx.proxy)
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json, text/plain, */*',
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-XSRF-TOKEN': session.xsrfToken,
-        Cookie: session.cookieHeader,
-        Origin: BASE_URL,
-        Referer: `${BASE_URL}/`
-      },
-      body: JSON.stringify(body),
-      dispatcher,
-      signal: ctx.abortSignal
-    } as RequestInit)
-
-    if (!res.ok) {
-      const text = await res.text()
-      if (res.status === 419) {
-        this.session = undefined
-      }
-      throw new Error(`Emailnator request failed (${res.status}): ${text.slice(0, 300)}`)
-    }
-
-    return res.text()
+    return this.postTextFromPage(ctx, path, body)
   }
 
   private async postTextFromPage(ctx: JobContext, path: string, body: unknown): Promise<string> {

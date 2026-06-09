@@ -98,8 +98,23 @@ export class WeiLaiChatProvider implements SiteProvider {
         browser.show()
       }
 
-      const formReady = await this.waitForRenderedForm(ctx, 30000)
+      let formReady = await this.waitForRenderedForm(ctx, ctx.headless ? 15000 : 30000)
+      if (!formReady && ctx.headless) {
+        const diag = await this.diagnoseRenderedPage(ctx).catch(() => null)
+        ctx.log('warn', `Registration form not rendered in hidden window; retrying. Diagnostics: ${JSON.stringify(diag)}`)
+        await browser.navigate(registerUrl)
+        await delay(3000, ctx.abortSignal)
+        formReady = await this.waitForRenderedForm(ctx, 20000)
+      }
+      if (!formReady && ctx.headless) {
+        ctx.log('warn', 'Headless form render failed; showing browser for recovery')
+        browser.show()
+        await delay(3000, ctx.abortSignal)
+        formReady = await this.waitForRenderedForm(ctx, 15000)
+      }
       if (!formReady) {
+        const diag = await this.diagnoseRenderedPage(ctx).catch(() => null)
+        ctx.log('error', `Registration form diagnostics: ${JSON.stringify(diag)}`)
         return { success: false, error: 'registration_form_not_found' }
       }
       await delay(Math.min(interStepDelayMs, 1500), ctx.abortSignal)
@@ -313,6 +328,30 @@ export class WeiLaiChatProvider implements SiteProvider {
     }
 
     return false
+  }
+
+  private async diagnoseRenderedPage(ctx: JobContext): Promise<Record<string, unknown>> {
+    return ctx.browser.executeScript<Record<string, unknown>>(`(() => ({
+      url: location.href,
+      title: document.title,
+      readyState: document.readyState,
+      bodyText: (document.body && document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 600),
+      inputCount: document.querySelectorAll('input').length,
+      inputs: Array.from(document.querySelectorAll('input')).map((input) => ({
+        type: input.type,
+        name: input.name,
+        id: input.id,
+        placeholder: input.placeholder,
+        disabled: input.disabled,
+        visible: (() => {
+          const rect = input.getBoundingClientRect();
+          const style = getComputedStyle(input);
+          return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+        })()
+      })),
+      buttonTexts: Array.from(document.querySelectorAll('button')).map((button) => (button.textContent || '').replace(/\s+/g, ' ').trim()).slice(0, 20),
+      scriptCount: document.scripts.length
+    }))`)
   }
 
   private async fillOptionalField(

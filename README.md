@@ -77,6 +77,22 @@ git push origin v1.0.0
 
 The workflow builds Windows and macOS packages, creates a GitHub Release, uploads the generated artifacts, and writes release notes from the previous tag to the current build tag.
 
+### macOS Signing
+
+macOS release files must be signed and notarized to open normally after download. Add these GitHub repository secrets to produce notarized macOS artifacts:
+
+- `MAC_CSC_LINK`: Base64-encoded Developer ID Application `.p12` certificate.
+- `MAC_CSC_KEY_PASSWORD`: Certificate password.
+- `APPLE_ID`: Apple ID email.
+- `APPLE_APP_SPECIFIC_PASSWORD`: App-specific Apple ID password.
+- `APPLE_TEAM_ID`: Apple Developer Team ID.
+
+If these secrets are missing, the workflow still builds unsigned macOS artifacts. macOS may show that the app is damaged after download. For local testing only, copy the app to `Applications` and remove quarantine:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Auto Register.app"
+```
+
 ## Project Structure
 
 - `src/main`: Electron main process, IPC handlers, settings, providers, storage, and proxy logic.

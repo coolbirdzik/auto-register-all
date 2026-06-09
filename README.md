@@ -13,11 +13,50 @@ This project is intended for educational use only. Use it responsibly and only w
 - Desktop app built with Electron, Electron Vite, React, and TypeScript.
 - Provider-based architecture for target sites and email inbox providers.
 - TokenLB registration workflow support.
+- Additional site provider support through the provider registry.
 - Email provider support, with Emailnator selected as the default provider.
 - Browser profile management for registration sessions.
 - Proxy pool management with manual import, TXT/JSON import, ZingProxy import, and free proxy source import.
 - Account storage and export.
+- API key creation and saved-key export for supported registered accounts.
+- Balance lookup for supported saved API keys, with browser-context fallback for protected requests.
 - GitHub Actions release workflow for Windows and macOS builds.
+
+## API Key Workflow
+
+The API Keys tab supports creating, updating, exporting, and checking supported API keys for registered accounts.
+
+Registration flow:
+
+- The app opens the selected target site's registration page in the selected browser profile.
+- If the target site requires a legal policy checkbox, the checkbox is accepted before filling the form.
+- A temporary Emailnator inbox is created and validated.
+- The app submits the registration form, waits for the email verification code, and fills the OTP from the received email.
+- Successful registrations are saved to Accounts with the browser profile and proxy used for that account.
+
+API key flow:
+
+- Open the `API Keys` tab.
+- Select a supported site in the Site filter.
+- Select an account and enter a key name.
+- Use `Group / Group ID` when the selected site supports key groups.
+- Click `Create API Key` to create a key for the selected account.
+- The generated key is saved back to the account record and appears in `Accounts` and `API Keys`.
+- Existing keys can be updated by group where the selected site supports group updates. This updates the saved key record instead of creating a new key.
+
+Balance flow:
+
+- In the `API Keys` tab, click `Get Balance` on a supported account row.
+- The app reads or refreshes the account login token from the saved browser profile.
+- It calls the supported site's balance/profile endpoint with the account token.
+- If the Node fetch path is blocked, the app falls back to the saved browser profile and fetches from the page context.
+- The fetched balance is saved on the account and displayed in the `Balance` column.
+
+Operational notes:
+
+- Site login tokens are read from the saved browser profile when required.
+- If automatic login cannot resolve a token, the browser profile is opened so the user can sign in manually and retry.
+- The API key and balance flows require the account record to have a browser profile, because the profile stores the site session/token.
 
 ## Requirements
 
@@ -103,6 +142,6 @@ xattr -dr com.apple.quarantine "/Applications/Auto Register.app"
 
 ## Notes
 
-- Current site support is limited to TokenLB.
 - Free public proxies can be unreliable. Always test imported proxies before running jobs.
 - The application currently uses the default Electron icon unless custom icons are added.
+- Use this project only with services, accounts, and traffic that you are allowed to test.

@@ -255,7 +255,7 @@ body {
 }
 
 .content-inner {
-  max-width: 1180px;
+  max-width: none;
   margin: 0 auto;
   padding: 32px 36px 56px;
 }

@@ -14,7 +14,10 @@ import type { EmailnatorMessageListItem } from './types'
 
 const INITIAL_INBOX_WAIT_MS = 10000
 const INBOX_POLL_INTERVAL_MS = 10000
+const VISIBLE_INITIAL_INBOX_WAIT_MS = 2500
+const VISIBLE_INBOX_POLL_INTERVAL_MS = 3000
 const MAX_INBOX_POLLS = 3
+const VISIBLE_MAX_INBOX_POLLS = 20
 const DEFAULT_EMAIL_TYPES = ['plusGmail', 'dotGmail', 'googleMail']
 const ALLOWED_EMAIL_TYPES = new Set(DEFAULT_EMAIL_TYPES)
 
@@ -104,10 +107,13 @@ export class EmailnatorProvider implements EmailProvider {
     timeoutMs: number
   ): Promise<EmailMessage> {
     const deadline = Date.now() + timeoutMs
-    await delay(Math.min(INITIAL_INBOX_WAIT_MS, timeoutMs), ctx.abortSignal)
+    const initialWaitMs = ctx.headless ? INITIAL_INBOX_WAIT_MS : VISIBLE_INITIAL_INBOX_WAIT_MS
+    const pollIntervalMs = ctx.headless ? INBOX_POLL_INTERVAL_MS : VISIBLE_INBOX_POLL_INTERVAL_MS
+    const maxPolls = ctx.headless ? MAX_INBOX_POLLS : VISIBLE_MAX_INBOX_POLLS
+    await delay(Math.min(initialWaitMs, timeoutMs), ctx.abortSignal)
 
     let pollCount = 0
-    while (Date.now() < deadline && pollCount < MAX_INBOX_POLLS) {
+    while (Date.now() < deadline && pollCount < maxPolls) {
       if (ctx.abortSignal.aborted) throw new Error('Job cancelled')
       pollCount++
 
@@ -126,12 +132,12 @@ export class EmailnatorProvider implements EmailProvider {
         }
       }
 
-      if (pollCount < MAX_INBOX_POLLS) {
-        await delay(Math.min(INBOX_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())), ctx.abortSignal)
+      if (pollCount < maxPolls) {
+        await delay(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())), ctx.abortSignal)
       }
     }
 
-    throw new Error(`Emailnator message timeout after ${MAX_INBOX_POLLS} inbox check(s)`)
+    throw new Error(`Emailnator message timeout after ${maxPolls} inbox check(s)`)
   }
 
   extractCode(message: EmailMessage, pattern?: RegExp): string | null {

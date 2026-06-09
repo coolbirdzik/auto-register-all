@@ -21,6 +21,12 @@ const DEFAULT_SETTINGS: AppSettings = {
       usernamePrefix: 'user',
       affCode: 'Fp7I',
       interStepDelayMs: 1000
+    },
+    'weilai-chat': {
+      baseUrl: 'https://api.weilai.chat',
+      registerPath: '/register',
+      passwordLength: 16,
+      interStepDelayMs: 800
     }
   },
   targetSites: [
@@ -29,6 +35,14 @@ const DEFAULT_SETTINGS: AppSettings = {
       label: 'TokenLB Default',
       providerId: 'tokenlb',
       startUrl: 'https://tokenlb.net/sign-up?aff=Fp7I',
+      enabled: true,
+      createdAt: new Date(0).toISOString()
+    },
+    {
+      id: 'weilai-chat-default',
+      label: 'WeiLai.Chat Default',
+      providerId: 'weilai-chat',
+      startUrl: 'https://api.weilai.chat/register',
       enabled: true,
       createdAt: new Date(0).toISOString()
     }
@@ -59,6 +73,7 @@ export class SettingsStore {
     })
     this.migrateDefaultConcurrency()
     this.migrateDefaultEmailProvider()
+    this.migrateWeiLaiChatTarget()
     this.removeUnsupportedProxies()
   }
 
@@ -77,6 +92,21 @@ export class SettingsStore {
       this.store.set('defaults.emailProviderId', DEFAULT_SETTINGS.defaults.emailProviderId)
     }
     this.store.set('migrations.emailnatorDefaultApplied', true)
+  }
+
+  private migrateWeiLaiChatTarget(): void {
+    if (this.store.store.migrations?.weilaiChatTargetApplied) return
+
+    const targetSites = this.store.store.targetSites ?? []
+    if (!targetSites.some((target) => target.id === 'weilai-chat-default')) {
+      this.store.set('targetSites', [...targetSites, DEFAULT_SETTINGS.targetSites[1]])
+    }
+
+    this.store.set('siteConfigs.weilai-chat', {
+      ...DEFAULT_SETTINGS.siteConfigs['weilai-chat'],
+      ...(this.store.store.siteConfigs?.['weilai-chat'] ?? {})
+    })
+    this.store.set('migrations.weilaiChatTargetApplied', true)
   }
 
   private removeUnsupportedProxies(): void {
@@ -121,6 +151,10 @@ export class SettingsStore {
           tokenlb: {
             ...settings.siteConfigs.tokenlb,
             affCode: 'Fp7I'
+          },
+          'weilai-chat': {
+            ...DEFAULT_SETTINGS.siteConfigs['weilai-chat'],
+            ...(settings.siteConfigs['weilai-chat'] ?? {})
           }
         },
         proxyProviders: {
@@ -154,6 +188,13 @@ export class SettingsStore {
         freeProxy: {
           ...DEFAULT_SETTINGS.proxyProviders?.freeProxy,
           ...(settings.proxyProviders?.freeProxy ?? {})
+        }
+      },
+      siteConfigs: {
+        ...settings.siteConfigs,
+        'weilai-chat': {
+          ...DEFAULT_SETTINGS.siteConfigs['weilai-chat'],
+          ...(settings.siteConfigs['weilai-chat'] ?? {})
         }
       }
     }

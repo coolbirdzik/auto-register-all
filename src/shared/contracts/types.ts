@@ -128,6 +128,14 @@ export interface AccountRecord {
   apiKeyName?: string
   apiKeyId?: number
   apiKeyCreatedAt?: string
+  apiKeyGroupId?: number
+  apiKeyGroupName?: string
+  apiKeyGroupPlatform?: string
+  apiKeyGroupRateMultiplier?: number
+  apiKeyGroupUpdatedAt?: string
+  apiBalance?: number
+  apiBalanceLabel?: string
+  apiBalanceFetchedAt?: string
   error?: string
 }
 
@@ -165,6 +173,15 @@ export interface NewApiTokenRecord {
   DeletedAt: unknown
 }
 
+export interface CreatedApiKeyRecord {
+  id: number
+  key: string
+  name: string
+  createdAt?: string
+  siteId?: string
+  metadata?: Record<string, unknown>
+}
+
 export interface CreateNewApiKeyOptions {
   accountId: string
   name: string
@@ -180,7 +197,40 @@ export interface CreateNewApiKeyOptions {
 
 export interface CreateNewApiKeyResult {
   account: AccountRecord
-  token: NewApiTokenRecord
+  token: CreatedApiKeyRecord
+}
+
+export interface GetApiKeyBalanceOptions {
+  accountId: string
+}
+
+export interface GetApiKeyBalanceResult {
+  account: AccountRecord
+  balance: number
+  label: string
+  metadata?: Record<string, unknown>
+}
+
+export interface ApiKeyGroupOption {
+  id: number
+  name: string
+  platform: string
+  rateMultiplier: number
+}
+
+export interface ListApiKeyGroupsOptions {
+  accountId: string
+}
+
+export interface UpdateApiKeyGroupOptions {
+  accountId: string
+  groupId: number
+}
+
+export interface UpdateApiKeyGroupResult {
+  account: AccountRecord
+  group: ApiKeyGroupOption
+  metadata?: Record<string, unknown>
 }
 
 export interface AppSettings {
@@ -191,6 +241,7 @@ export interface AppSettings {
   }
   migrations?: {
     emailnatorDefaultApplied?: boolean
+    weilaiChatTargetApplied?: boolean
   }
   siteConfigs: Record<string, Record<string, unknown>>
   targetSites: TargetSiteConfig[]

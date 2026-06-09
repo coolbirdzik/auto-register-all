@@ -10,6 +10,7 @@ import { registerIpcHandlers } from './ipc/handlers'
 import { ProxyManager } from './proxy/proxy-manager'
 import { SettingsStore } from './settings'
 import { TokenLBProvider } from './site-providers/tokenlb'
+import { WeiLaiChatProvider } from './site-providers/weilai-chat'
 import { AccountStore } from './storage/account-store'
 import { RegistrationLogStore } from './storage/registration-log-store'
 import type { JobProgressEvent, ManualOtpRequest } from '../shared/contracts'
@@ -45,6 +46,7 @@ const browserPool = new BrowserPool(proxyManager, {
 registry.registerEmail(new GmailnatorProvider(proxyManager))
 registry.registerEmail(new EmailnatorProvider(proxyManager))
 registry.registerSite(new TokenLBProvider(registry, proxyManager))
+registry.registerSite(new WeiLaiChatProvider(registry, proxyManager))
 browserPool.setProfiles(settings.browsers)
 
 function broadcastProgress(event: JobProgressEvent): void {

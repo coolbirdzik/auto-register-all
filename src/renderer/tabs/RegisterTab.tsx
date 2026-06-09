@@ -49,6 +49,37 @@ const EMPTY_RUN_STATS: RunStats = {
   finishedAt: null
 }
 
+const REGISTER_PREFS_KEY = 'register-tab-preferences'
+
+interface RegisterPreferences {
+  targetSiteId?: string
+  emailId?: string
+  browserMode?: 'auto' | 'fixed' | 'rotate'
+  profileId?: string
+  proxyMode?: 'none' | 'fixed' | 'rotate' | 'profile'
+  proxyId?: string
+  count?: number
+  continuousRun?: boolean
+  delay?: number
+  maxConcurrent?: number
+  headless?: boolean
+  useCustomEmail?: boolean
+  customEmail?: string
+}
+
+function loadRegisterPreferences(): RegisterPreferences {
+  try {
+    return JSON.parse(window.localStorage.getItem(REGISTER_PREFS_KEY) ?? '{}') as RegisterPreferences
+  } catch {
+    return {}
+  }
+}
+
+function saveRegisterPreferences(patch: RegisterPreferences): void {
+  const current = loadRegisterPreferences()
+  window.localStorage.setItem(REGISTER_PREFS_KEY, JSON.stringify({ ...current, ...patch }))
+}
+
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const minutes = Math.floor(totalSeconds / 60)
@@ -176,20 +207,27 @@ export default function RegisterTab(): JSX.Element {
       setProxies(pr)
       setTargetSites(st.targetSites.filter((target) => target.enabled))
       setSettings(st)
+      const prefs = loadRegisterPreferences()
+      const savedTarget = st.targetSites.find((target) => target.id === prefs.targetSiteId && target.enabled)
       const defaultTarget = st.targetSites.find((target) => target.id === st.defaults.targetSiteId && target.enabled)
-      setTargetSiteId(defaultTarget?.id ?? st.targetSites.find((target) => target.enabled)?.id ?? '')
-      setSiteId(defaultTarget?.providerId ?? st.defaults.siteId)
-      setEmailId(st.defaults.emailProviderId)
-      setBrowserMode(st.defaults.browserMode)
-      setProxyMode(st.defaults.proxyMode)
-      setContinuousRun(st.defaults.continuousRun ?? false)
-      setDelay(st.defaults.interJobDelayMs)
-      setMaxConcurrent(st.defaults.maxConcurrent)
-      setHeadless(st.defaults.headless ?? true)
+      const selectedTarget = savedTarget ?? defaultTarget ?? st.targetSites.find((target) => target.enabled)
+      setTargetSiteId(selectedTarget?.id ?? '')
+      setSiteId(selectedTarget?.providerId ?? st.defaults.siteId)
+      setEmailId(prefs.emailId ?? st.defaults.emailProviderId)
+      setBrowserMode(prefs.browserMode ?? st.defaults.browserMode)
+      setProfileId(prefs.profileId ?? '')
+      setProxyMode(prefs.proxyMode ?? st.defaults.proxyMode)
+      setProxyId(prefs.proxyId ?? '')
+      setCount(prefs.count ?? 1)
+      setContinuousRun(prefs.continuousRun ?? st.defaults.continuousRun ?? false)
+      setDelay(prefs.delay ?? st.defaults.interJobDelayMs)
+      setMaxConcurrent(prefs.maxConcurrent ?? st.defaults.maxConcurrent)
+      setHeadless(prefs.headless ?? st.defaults.headless ?? true)
       const savedCustomEmail = String(st.emailProviders[st.defaults.emailProviderId]?.customEmail ?? '').trim()
-      if (savedCustomEmail) {
-        setUseCustomEmail(true)
-        setCustomEmail(savedCustomEmail)
+      const preferredCustomEmail = prefs.customEmail ?? savedCustomEmail
+      setUseCustomEmail(prefs.useCustomEmail ?? Boolean(preferredCustomEmail))
+      if (preferredCustomEmail) {
+        setCustomEmail(preferredCustomEmail)
       }
     } catch (err) {
       setLogs((prev) => [
@@ -299,6 +337,15 @@ export default function RegisterTab(): JSX.Element {
     setRunStats((prev) => ({ ...prev, finishedAt: Date.now() }))
   }
 
+  function persistDefaults(defaults: Partial<AppSettings['defaults']>): void {
+    setSettings((prev) => {
+      if (!prev) return prev
+      const updatedDefaults = { ...prev.defaults, ...defaults }
+      void window.electronAPI.saveSettings({ defaults: updatedDefaults })
+      return { ...prev, defaults: updatedDefaults }
+    })
+  }
+
   const completed = runStats.success + runStats.failed
   const inFlight = Math.max(0, runStats.started - completed)
   const successRate = completed > 0 ? Math.round((runStats.success / completed) * 100) : 0
@@ -380,6 +427,8 @@ export default function RegisterTab(): JSX.Element {
                 const nextTarget = targetSites.find((target) => target.id === e.target.value)
                 setTargetSiteId(e.target.value)
                 if (nextTarget) setSiteId(nextTarget.providerId)
+                saveRegisterPreferences({ targetSiteId: e.target.value })
+                persistDefaults({ targetSiteId: e.target.value, siteId: nextTarget?.providerId ?? siteId })
               }}
             >
               <option value="">Select...</option>
@@ -392,7 +441,14 @@ export default function RegisterTab(): JSX.Element {
           </Field>
 
           <Field label="Email Provider">
-            <Select value={emailId} onChange={(e) => setEmailId(e.target.value)}>
+            <Select
+              value={emailId}
+              onChange={(e) => {
+                setEmailId(e.target.value)
+                saveRegisterPreferences({ emailId: e.target.value })
+                persistDefaults({ emailProviderId: e.target.value })
+              }}
+            >
               {emails.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.name}
@@ -408,7 +464,10 @@ export default function RegisterTab(): JSX.Element {
             <Checkbox
               label="Use my own email"
               checked={useCustomEmail}
-              onChange={(e) => setUseCustomEmail(e.target.checked)}
+              onChange={(e) => {
+                setUseCustomEmail(e.target.checked)
+                saveRegisterPreferences({ useCustomEmail: e.target.checked })
+              }}
             />
           </Field>
 
@@ -418,13 +477,24 @@ export default function RegisterTab(): JSX.Element {
                 type="email"
                 value={customEmail}
                 placeholder="name@example.com"
-                onChange={(e) => setCustomEmail(e.target.value)}
+                onChange={(e) => {
+                  setCustomEmail(e.target.value)
+                  saveRegisterPreferences({ customEmail: e.target.value })
+                }}
               />
             </Field>
           )}
 
           <Field label="Browser Mode">
-            <Select value={browserMode} onChange={(e) => setBrowserMode(e.target.value as typeof browserMode)}>
+            <Select
+              value={browserMode}
+              onChange={(e) => {
+                const next = e.target.value as typeof browserMode
+                setBrowserMode(next)
+                saveRegisterPreferences({ browserMode: next })
+                persistDefaults({ browserMode: next })
+              }}
+            >
               <option value="auto">Auto</option>
               <option value="fixed">Fixed</option>
               <option value="rotate">Rotate</option>
@@ -433,7 +503,13 @@ export default function RegisterTab(): JSX.Element {
 
           {browserMode === 'fixed' && (
             <Field label="Browser Profile">
-              <Select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
+              <Select
+                value={profileId}
+                onChange={(e) => {
+                  setProfileId(e.target.value)
+                  saveRegisterPreferences({ profileId: e.target.value })
+                }}
+              >
                 <option value="">Select...</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -445,7 +521,15 @@ export default function RegisterTab(): JSX.Element {
           )}
 
           <Field label="Proxy Mode">
-            <Select value={proxyMode} onChange={(e) => setProxyMode(e.target.value as typeof proxyMode)}>
+            <Select
+              value={proxyMode}
+              onChange={(e) => {
+                const next = e.target.value as typeof proxyMode
+                setProxyMode(next)
+                saveRegisterPreferences({ proxyMode: next })
+                persistDefaults({ proxyMode: next })
+              }}
+            >
               <option value="none">None</option>
               <option value="fixed">Fixed</option>
               <option value="rotate">Rotate</option>
@@ -455,7 +539,13 @@ export default function RegisterTab(): JSX.Element {
 
           {proxyMode === 'fixed' && (
             <Field label="Proxy">
-              <Select value={proxyId} onChange={(e) => setProxyId(e.target.value)}>
+              <Select
+                value={proxyId}
+                onChange={(e) => {
+                  setProxyId(e.target.value)
+                  saveRegisterPreferences({ proxyId: e.target.value })
+                }}
+              >
                 <option value="">Select...</option>
                 {proxies.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -473,7 +563,11 @@ export default function RegisterTab(): JSX.Element {
               max={100}
               value={count}
               disabled={continuousRun}
-              onChange={(e) => setCount(Number(e.target.value))}
+              onChange={(e) => {
+                const next = Number(e.target.value)
+                setCount(next)
+                saveRegisterPreferences({ count: next })
+              }}
             />
           </Field>
 
@@ -484,12 +578,26 @@ export default function RegisterTab(): JSX.Element {
             <Checkbox
               label="Create continuously"
               checked={continuousRun}
-              onChange={(e) => setContinuousRun(e.target.checked)}
+              onChange={(e) => {
+                setContinuousRun(e.target.checked)
+                saveRegisterPreferences({ continuousRun: e.target.checked })
+                persistDefaults({ continuousRun: e.target.checked })
+              }}
             />
           </Field>
 
           <Field label="Delay (ms)">
-            <Input type="number" min={0} value={delay} onChange={(e) => setDelay(Number(e.target.value))} />
+            <Input
+              type="number"
+              min={0}
+              value={delay}
+              onChange={(e) => {
+                const next = Number(e.target.value)
+                setDelay(next)
+                saveRegisterPreferences({ delay: next })
+                persistDefaults({ interJobDelayMs: next })
+              }}
+            />
           </Field>
 
           <Field label="Max Concurrent">
@@ -498,7 +606,12 @@ export default function RegisterTab(): JSX.Element {
               min={1}
               max={10}
               value={maxConcurrent}
-              onChange={(e) => setMaxConcurrent(Number(e.target.value))}
+              onChange={(e) => {
+                const next = Number(e.target.value)
+                setMaxConcurrent(next)
+                saveRegisterPreferences({ maxConcurrent: next })
+                persistDefaults({ maxConcurrent: next })
+              }}
             />
           </Field>
 
@@ -512,6 +625,7 @@ export default function RegisterTab(): JSX.Element {
               onChange={(e) => {
                 const next = e.target.checked
                 setHeadless(next)
+                saveRegisterPreferences({ headless: next })
                 setSettings((prev) => {
                   if (!prev) return prev
                   const updated = { ...prev, defaults: { ...prev.defaults, headless: next } }

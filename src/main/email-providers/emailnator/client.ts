@@ -5,11 +5,12 @@ import type {
   EmailnatorGenerateResponse,
   EmailnatorInboxResponse
 } from './types'
+import type { EmailnatorMessageListItem } from './types'
 
 const BASE_URL = 'https://www.emailnator.com'
 
 function buildInboxUrl(email: string): string {
-  return `${BASE_URL}/mailbox/#${email}`
+  return `${BASE_URL}/mailbox#${email}`
 }
 
 interface EmailnatorSession {
@@ -190,11 +191,11 @@ export class EmailnatorClient {
     return result.text
   }
 
-  private async openInboxPage(ctx: JobContext, email: string): Promise<void> {
+  private async openInboxPage(ctx: JobContext, email: string, options?: { reload?: boolean }): Promise<void> {
     if (ctx.headless) return
     const win = await this.ensurePreviewWindow(ctx)
     const inboxUrl = buildInboxUrl(email)
-    if (win.webContents.getURL() !== inboxUrl) {
+    if (options?.reload || win.webContents.getURL() !== inboxUrl) {
       await win.loadURL(inboxUrl).catch(() => undefined)
     }
     await win.webContents.executeJavaScript(
@@ -219,11 +220,13 @@ export class EmailnatorClient {
 
   async validateInbox(ctx: JobContext, email: string): Promise<boolean> {
     if (!ctx.headless) {
+      await this.updatePreview(ctx, `Validating inbox:\n${email}`)
       await this.openInboxPage(ctx, email)
       if (!this.previewWindow || this.previewWindow.isDestroyed()) return false
-      await new Promise((resolve) => setTimeout(resolve, 3000))
       const text = await this.previewWindow.webContents.executeJavaScript('document.body.innerText || ""', true)
-      return !String(text).toLowerCase().includes('email is currently not available')
+      const available = !String(text).toLowerCase().includes('email is currently not available')
+      await this.updatePreview(ctx, available ? `Inbox available:\n${email}` : `Inbox unavailable:\n${email}`)
+      return available
     }
 
     const partition = `emailnator-validate:${ctx.jobId}:${encodeURIComponent(email)}`
@@ -275,6 +278,48 @@ export class EmailnatorClient {
     ).catch(() => undefined)
   }
 
+  private async scrapeInboxMessages(ctx: JobContext, email: string): Promise<EmailnatorMessageListItem[]> {
+    if (ctx.headless || !this.previewWindow || this.previewWindow.isDestroyed()) return []
+    await this.openInboxPage(ctx, email)
+    await this.updatePreview(ctx, `Scanning mailbox page:\n${email}`)
+    return this.previewWindow.webContents.executeJavaScript(
+      `(() => {
+        const email = ${JSON.stringify(email)};
+        const rows = Array.from(document.querySelectorAll('table.table a[href*="/mailbox/"]'));
+        return rows.map((link) => {
+          const cells = Array.from(link.querySelectorAll('td')).map((td) => (td.textContent || '').trim());
+          const href = link.getAttribute('href') || '';
+          const messageID = href.split('/').filter(Boolean).pop() || href;
+          return {
+            messageID,
+            href: new URL(href, location.origin).toString(),
+            from: cells[0] || '',
+            subject: cells[1] || '',
+            time: cells[2] || ''
+          };
+        }).filter((item) => item.href.includes('/mailbox/' + email + '/'));
+      })()`,
+      true
+    ) as Promise<Array<EmailnatorMessageListItem & { href: string }>>
+  }
+
+  private async scrapeMessageHtml(ctx: JobContext, email: string, item: EmailnatorMessageListItem): Promise<string> {
+    if (ctx.headless || !this.previewWindow || this.previewWindow.isDestroyed()) return ''
+    const href = (item as EmailnatorMessageListItem & { href?: string }).href
+    const messageUrl = href || `${BASE_URL}/mailbox/${email}/${item.messageID}`
+    await this.previewWindow.loadURL(messageUrl).catch(() => undefined)
+    await this.updatePreview(ctx, `Opening mailbox message:\n${email}\n${item.subject}`)
+    const html = await this.previewWindow.webContents.executeJavaScript(
+      `(() => {
+        const card = document.querySelector('.card .card-body') || document.querySelector('.inbox--page') || document.body;
+        return card ? card.innerHTML : document.body.innerHTML;
+      })()`,
+      true
+    )
+    await this.renderMessageHtml(ctx, String(html))
+    return String(html)
+  }
+
   private async renderMessageHtml(ctx: JobContext, html: string): Promise<void> {
     if (ctx.headless || !this.previewWindow || this.previewWindow.isDestroyed()) return
     await this.previewWindow.webContents.executeJavaScript(
@@ -313,7 +358,6 @@ export class EmailnatorClient {
       throw new Error(`Emailnator did not return an email: ${JSON.stringify(data).slice(0, 300)}`)
     }
     await this.updatePreview(ctx, `Generated email:\n${email}`)
-    await this.openInboxPage(ctx, email)
     return email
   }
 
@@ -322,6 +366,17 @@ export class EmailnatorClient {
     await this.reloadInboxPage(ctx, email)
     await this.updatePreview(ctx, `Checking inbox:\n${email}`)
     const inbox = await this.postJson<EmailnatorInboxResponse>(ctx, '/message-list', { email })
+    if (!ctx.headless) {
+      const scrapedMessages = await this.scrapeInboxMessages(ctx, email)
+      const apiMessages = inbox.messageData ?? []
+      const seen = new Set<string>()
+      inbox.messageData = [...scrapedMessages, ...apiMessages].filter((message) => {
+        const key = `${message.messageID}:${message.from}:${message.subject}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+    }
     await this.renderInboxMessages(ctx, email, inbox)
     await this.updatePreview(ctx, `Inbox checked:\n${email}\nMessages: ${inbox.messageData?.length ?? 0}`)
     return inbox
@@ -329,6 +384,11 @@ export class EmailnatorClient {
 
   async getMessage(ctx: JobContext, email: string, messageID: string): Promise<string> {
     await this.updatePreview(ctx, `Opening message:\n${email}\nMessage ID: ${messageID}`)
+    if (!ctx.headless) {
+      const scraped = await this.scrapeMessageHtml(ctx, email, { messageID, from: '', subject: '' })
+      if (scraped) return scraped
+    }
+
     const html = await this.postText(ctx, '/message-list', { email, messageID })
     await this.renderMessageHtml(ctx, html)
     await this.updatePreview(ctx, `Message loaded:\n${email}\nMessage ID: ${messageID}`)

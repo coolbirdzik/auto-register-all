@@ -7,9 +7,12 @@ import type {
   CreateNewApiKeyOptions,
   ExportOptions,
   FreeProxySettings,
+  GetApiKeyBalanceOptions,
+  ListApiKeyGroupsOptions,
   JobProgressEvent,
   ProxyConfig,
   StartJobOptions,
+  UpdateApiKeyGroupOptions,
   ZingProxySettings
 } from '../../shared/contracts'
 import type { BrowserPool } from '../browser/browser-pool'
@@ -23,6 +26,7 @@ import type { SettingsStore } from '../settings'
 import type { AccountStore } from '../storage/account-store'
 import type { RegistrationLogStore } from '../storage/registration-log-store'
 import { NewApiTokenClient } from '../new-api/token-client'
+import { WeiLaiApiKeyClient } from '../weilai/api-key-client'
 
 export function registerIpcHandlers(deps: {
   settingsStore: SettingsStore
@@ -53,6 +57,7 @@ export function registerIpcHandlers(deps: {
   }
 
   const newApiTokenClient = new NewApiTokenClient(proxyManager)
+  const weiLaiApiKeyClient = new WeiLaiApiKeyClient(browserPool, proxyManager)
 
   const importProxyBatch = (proxies: ProxyConfig[]): ProxyConfig[] => {
     const existing = new Set(
@@ -411,33 +416,124 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle('create-new-api-key', async (_e, options: CreateNewApiKeyOptions) => {
     const account = await accountStore.get(options.accountId)
     if (!account) throw new Error('Account not found')
-    if (account.siteId !== 'tokenlb') throw new Error('Selected account is not a New API site account')
     if (account.status !== 'success') throw new Error('Only successful accounts can create API keys')
     if (!account.browserProfileId) throw new Error('Account has no browser profile for reading login cookies')
 
     const settings = settingsStore.get()
     const target = settings.targetSites.find((site) => site.id === account.siteId || site.providerId === account.siteId)
-    const baseUrl = String(settings.siteConfigs[account.siteId]?.baseUrl ?? target?.startUrl ?? 'https://tokenlb.net')
+    const fallbackBaseUrl = account.siteId === 'weilai-chat' ? 'https://api.weilai.chat' : 'https://tokenlb.net'
+    const baseUrl = String(settings.siteConfigs[account.siteId]?.baseUrl ?? target?.startUrl ?? fallbackBaseUrl)
     const origin = new URL(baseUrl).origin
-    const sessionCookie =
-      (await readSessionCookie(account.browserProfileId, origin)) || (await loginNewApiAccount(account, origin))
+    const proxy = account.proxyId ? proxyManager.get(account.proxyId) : undefined
 
-    const userId = await resolveNewApiUserId(account.browserProfileId, origin, sessionCookie)
+    if (account.siteId === 'tokenlb') {
+      const sessionCookie =
+        (await readSessionCookie(account.browserProfileId, origin)) || (await loginNewApiAccount(account, origin))
 
-    if (!userId || !/^\d+$/.test(userId)) {
-      await browserPool.showProfile(account.browserProfileId)
-      throw new Error('New API user id was not found. Open the account profile and visit the keys page, then retry.')
+      const userId = await resolveNewApiUserId(account.browserProfileId, origin, sessionCookie)
+
+      if (!userId || !/^\d+$/.test(userId)) {
+        await browserPool.showProfile(account.browserProfileId)
+        throw new Error('New API user id was not found. Open the account profile and visit the keys page, then retry.')
+      }
+
+      const token = await newApiTokenClient.createAndFindLatest(origin, sessionCookie, userId, options, proxy)
+      const normalizedToken = {
+        id: token.id,
+        key: token.key,
+        name: token.name,
+        createdAt: new Date(token.created_time * 1000).toISOString(),
+        siteId: account.siteId,
+        metadata: token as unknown as Record<string, unknown>
+      }
+      const updated = await accountStore.update(account.id, {
+        apiKey: normalizedToken.key,
+        apiKeyName: normalizedToken.name,
+        apiKeyId: normalizedToken.id,
+        apiKeyCreatedAt: normalizedToken.createdAt
+      })
+      return { account: updated, token: normalizedToken }
     }
 
+    if (account.siteId === 'weilai-chat') {
+      const token = await weiLaiApiKeyClient.createKey(origin, account, options, proxy)
+      const updated = await accountStore.update(account.id, {
+        apiKey: token.key,
+        apiKeyName: token.name,
+        apiKeyId: token.id,
+        apiKeyCreatedAt: token.createdAt ? new Date(token.createdAt).toISOString() : new Date().toISOString()
+      })
+      return { account: updated, token }
+    }
+
+    throw new Error(`API key creation is not supported for site: ${account.siteId}`)
+  })
+
+  ipcMain.handle('get-api-key-balance', async (_e, options: GetApiKeyBalanceOptions) => {
+    const account = await accountStore.get(options.accountId)
+    if (!account) throw new Error('Account not found')
+    if (account.status !== 'success') throw new Error('Only successful accounts can fetch API key balance')
+    if (!account.apiKey) throw new Error('Account has no API key')
+    if (!account.browserProfileId) throw new Error('Account has no browser profile for reading login token')
+
+    const settings = settingsStore.get()
+    const target = settings.targetSites.find((site) => site.id === account.siteId || site.providerId === account.siteId)
+    const fallbackBaseUrl = account.siteId === 'weilai-chat' ? 'https://api.weilai.chat' : 'https://tokenlb.net'
+    const baseUrl = String(settings.siteConfigs[account.siteId]?.baseUrl ?? target?.startUrl ?? fallbackBaseUrl)
+    const origin = new URL(baseUrl).origin
     const proxy = account.proxyId ? proxyManager.get(account.proxyId) : undefined
-    const token = await newApiTokenClient.createAndFindLatest(origin, sessionCookie, userId, options, proxy)
+
+    if (account.siteId !== 'weilai-chat') {
+      throw new Error(`Balance lookup is not supported for site: ${account.siteId}`)
+    }
+
+    const balance = await weiLaiApiKeyClient.getBalance(origin, account, proxy)
     const updated = await accountStore.update(account.id, {
-      apiKey: token.key,
-      apiKeyName: token.name,
-      apiKeyId: token.id,
-      apiKeyCreatedAt: new Date(token.created_time * 1000).toISOString()
+      apiBalance: balance.balance,
+      apiBalanceLabel: balance.label,
+      apiBalanceFetchedAt: new Date().toISOString()
     })
-    return { account: updated, token }
+    return { account: updated, ...balance }
+  })
+
+  ipcMain.handle('list-api-key-groups', async (_e, options: ListApiKeyGroupsOptions) => {
+    const account = await accountStore.get(options.accountId)
+    if (!account) throw new Error('Account not found')
+    if (account.siteId !== 'weilai-chat') throw new Error(`Group lookup is not supported for site: ${account.siteId}`)
+    if (account.status !== 'success') throw new Error('Only successful accounts can list API key groups')
+    if (!account.browserProfileId) throw new Error('Account has no browser profile for reading login token')
+
+    const settings = settingsStore.get()
+    const target = settings.targetSites.find((site) => site.id === account.siteId || site.providerId === account.siteId)
+    const baseUrl = String(settings.siteConfigs[account.siteId]?.baseUrl ?? target?.startUrl ?? 'https://api.weilai.chat')
+    const origin = new URL(baseUrl).origin
+    const proxy = account.proxyId ? proxyManager.get(account.proxyId) : undefined
+    return weiLaiApiKeyClient.listGroups(origin, account, proxy)
+  })
+
+  ipcMain.handle('update-api-key-group', async (_e, options: UpdateApiKeyGroupOptions) => {
+    const account = await accountStore.get(options.accountId)
+    if (!account) throw new Error('Account not found')
+    if (account.siteId !== 'weilai-chat') throw new Error(`Group update is not supported for site: ${account.siteId}`)
+    if (account.status !== 'success') throw new Error('Only successful accounts can update API key groups')
+    if (!account.apiKey) throw new Error('Account has no API key')
+    if (!account.apiKeyId) throw new Error('Account API key id is missing')
+    if (!account.browserProfileId) throw new Error('Account has no browser profile for reading login token')
+
+    const settings = settingsStore.get()
+    const target = settings.targetSites.find((site) => site.id === account.siteId || site.providerId === account.siteId)
+    const baseUrl = String(settings.siteConfigs[account.siteId]?.baseUrl ?? target?.startUrl ?? 'https://api.weilai.chat')
+    const origin = new URL(baseUrl).origin
+    const proxy = account.proxyId ? proxyManager.get(account.proxyId) : undefined
+    const result = await weiLaiApiKeyClient.updateKeyGroup(origin, account, options.groupId, proxy)
+    const updated = await accountStore.update(account.id, {
+      apiKeyGroupId: result.group.id,
+      apiKeyGroupName: result.group.name,
+      apiKeyGroupPlatform: result.group.platform,
+      apiKeyGroupRateMultiplier: result.group.rateMultiplier,
+      apiKeyGroupUpdatedAt: new Date().toISOString()
+    })
+    return { account: updated, group: result.group, metadata: result.metadata }
   })
 
   ipcMain.handle('export-accounts', async (_e, options: ExportOptions) => {

@@ -9,6 +9,7 @@ import type {
 } from '../../shared/contracts'
 import type { JobContext } from '../../shared/contracts/job-context'
 import type { ManualOtpRequester } from '../../shared/contracts/job-context'
+import type { BrowserSession } from '../../shared/contracts/browser-session'
 import type { BrowserPool } from '../browser/browser-pool'
 import type { ProxyManager } from '../proxy/proxy-manager'
 import type { AccountStore } from '../storage/account-store'
@@ -17,6 +18,9 @@ import type { ProviderRegistry } from './registry'
 
 export class JobRunner {
   private abortControllers = new Map<string, AbortController>()
+  private activeSessions = new Map<string, BrowserSession>()
+  private batchController?: AbortController
+  private currentBatchId?: string
   private running = false
   private cancelAll = false
 
@@ -41,18 +45,25 @@ export class JobRunner {
     }
 
     const batchId = uuidv4()
+    const batchController = new AbortController()
     this.running = true
     this.cancelAll = false
+    this.currentBatchId = batchId
+    this.batchController = batchController
 
-    void this.runBatch(batchId, options)
+    void this.runBatch(batchId, options, batchController.signal)
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err)
         this.onProgress({ type: 'log', jobId: batchId, level: 'error', message })
         this.onProgress({ type: 'batch_completed', successCount: 0, failCount: 0 })
       })
       .finally(() => {
-        this.running = false
-        this.cancelAll = false
+        if (this.currentBatchId === batchId) {
+          this.running = false
+          this.cancelAll = false
+          this.currentBatchId = undefined
+          this.batchController = undefined
+        }
       })
 
     return { batchId }
@@ -65,12 +76,21 @@ export class JobRunner {
 
   cancelAllJobs(): void {
     this.cancelAll = true
+    this.batchController?.abort()
     for (const controller of this.abortControllers.values()) {
       controller.abort()
     }
+    for (const session of this.activeSessions.values()) {
+      this.browserPool.release(session, true, false, false)
+    }
+    this.activeSessions.clear()
+    this.abortControllers.clear()
+    this.running = false
+    this.currentBatchId = undefined
+    this.batchController = undefined
   }
 
-  private async runBatch(batchId: string, options: StartJobOptions): Promise<void> {
+  private async runBatch(batchId: string, options: StartJobOptions, batchSignal: AbortSignal): Promise<void> {
     const settings = this.getSettings()
     const continuous = options.continuous ?? settings.defaults.continuousRun ?? false
     const count = Math.max(1, Number(options.count) || 1)
@@ -99,7 +119,7 @@ export class JobRunner {
     const inFlight: Promise<void>[] = []
 
     const runOne = async (index: number): Promise<void> => {
-      if (this.cancelAll) return
+      if (batchSignal.aborted) return
 
       const jobId = `${batchId}-${index}`
       const controller = new AbortController()
@@ -134,6 +154,9 @@ export class JobRunner {
             message: `Using proxy: ${proxy.type}://${proxy.host}:${proxy.port}`
           })
           const proxyTest = await this.proxyManager.test(proxy)
+          if (controller.signal.aborted || batchSignal.aborted) {
+            throw new Error('Job cancelled')
+          }
           if (!proxyTest.ok) {
             const error = `proxy_test_failed: ${proxyTest.error ?? 'timeout'}`
             const site = this.registry.getSite(options.siteId)
@@ -153,6 +176,7 @@ export class JobRunner {
         }
         const headless = options.headless ?? settings.defaults.headless ?? true
         browserSession = await this.browserPool.acquire(profileId, proxy, headless)
+        this.activeSessions.set(jobId, browserSession)
 
         const siteConfig = {
           ...(settings.siteConfigs[options.siteId] ?? {}),
@@ -185,6 +209,10 @@ export class JobRunner {
 
         const site = this.registry.getSite(options.siteId)
         const result = await site.register(ctx, { siteConfig })
+        if (controller.signal.aborted || batchSignal.aborted) {
+          this.onProgress({ type: 'log', jobId, level: 'warn', message: 'Job cancelled' })
+          return
+        }
 
         const account = result.success
           ? await this.saveResult(result, options.siteId, site.name, browserSession.profileId, proxy?.id)
@@ -199,6 +227,10 @@ export class JobRunner {
 
         this.onProgress({ type: 'job_completed', jobId, result, account })
       } catch (err) {
+        if (controller.signal.aborted || batchSignal.aborted) {
+          this.onProgress({ type: 'log', jobId, level: 'warn', message: 'Job cancelled' })
+          return
+        }
         const error = err instanceof Error ? err.message : String(err)
         const result: RegisterResult = { success: false, error }
         failCount++
@@ -209,17 +241,22 @@ export class JobRunner {
         this.onProgress({ type: 'log', jobId, level: 'error', message: error })
         this.onProgress({ type: 'job_completed', jobId, result })
       } finally {
+        if (browserSession && !this.activeSessions.has(jobId)) {
+          // Cancel already destroyed and released this session.
+          browserSession = undefined
+        }
         if (browserSession) {
           const clearCookies = options.browser?.clearCookiesOnRelease ?? true
           const headless = options.headless ?? settings.defaults.headless ?? true
           this.browserPool.release(browserSession, false, clearCookies, headless)
         }
+        this.activeSessions.delete(jobId)
         this.abortControllers.delete(jobId)
       }
     }
 
     const scheduleNext = (): void => {
-      if ((!continuous && nextIndex >= count) || this.cancelAll) return
+      if ((!continuous && nextIndex >= count) || batchSignal.aborted) return
       const index = nextIndex++
       const promise = runOne(index).then(() => {
         if (interJobDelayMs > 0 && (continuous || nextIndex < count)) {
@@ -230,7 +267,7 @@ export class JobRunner {
       promise.finally(() => {
         const idx = inFlight.indexOf(promise)
         if (idx !== -1) inFlight.splice(idx, 1)
-        if (inFlight.length < maxConcurrent && (continuous || nextIndex < count)) {
+        if (!batchSignal.aborted && inFlight.length < maxConcurrent && (continuous || nextIndex < count)) {
           scheduleNext()
         }
       })
@@ -245,7 +282,11 @@ export class JobRunner {
       await Promise.race(inFlight).catch(() => undefined)
     }
 
-    this.onProgress({ type: 'batch_completed', successCount, failCount })
+    if (!batchSignal.aborted) {
+      this.onProgress({ type: 'batch_completed', successCount, failCount })
+    } else {
+      this.onProgress({ type: 'log', jobId: batchId, level: 'warn', message: 'Batch cancelled' })
+    }
   }
 
   private resolveProxy(

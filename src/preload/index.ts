@@ -8,6 +8,10 @@ import type {
   CreateNewApiKeyResult,
   ExportOptions,
   FreeProxySettings,
+  GetApiKeyBalanceOptions,
+  GetApiKeyBalanceResult,
+  ApiKeyGroupOption,
+  ListApiKeyGroupsOptions,
   JobProgressEvent,
   ManualOtpRequest,
   ProxyConfig,
@@ -17,7 +21,9 @@ import type {
   ZingProxySettings,
   SiteMeta,
   EmailMeta,
-  StartJobOptions
+  StartJobOptions,
+  UpdateApiKeyGroupOptions,
+  UpdateApiKeyGroupResult
 } from '../shared/contracts'
 
 export interface ElectronAPI {
@@ -48,6 +54,9 @@ export interface ElectronAPI {
   getRegistrationLogs(): Promise<RegistrationLogRecord[]>
   clearRegistrationLogs(): Promise<void>
   createNewApiKey(options: CreateNewApiKeyOptions): Promise<CreateNewApiKeyResult>
+  getApiKeyBalance(options: GetApiKeyBalanceOptions): Promise<GetApiKeyBalanceResult>
+  listApiKeyGroups(options: ListApiKeyGroupsOptions): Promise<ApiKeyGroupOption[]>
+  updateApiKeyGroup(options: UpdateApiKeyGroupOptions): Promise<UpdateApiKeyGroupResult>
   testEmailProvider(providerId: string): Promise<{ success: boolean; email?: string; error?: string }>
 }
 
@@ -87,6 +96,9 @@ const api: ElectronAPI = {
   getRegistrationLogs: () => ipcRenderer.invoke('get-registration-logs'),
   clearRegistrationLogs: () => ipcRenderer.invoke('clear-registration-logs'),
   createNewApiKey: (options) => ipcRenderer.invoke('create-new-api-key', options),
+  getApiKeyBalance: (options) => ipcRenderer.invoke('get-api-key-balance', options),
+  listApiKeyGroups: (options) => ipcRenderer.invoke('list-api-key-groups', options),
+  updateApiKeyGroup: (options) => ipcRenderer.invoke('update-api-key-group', options),
   testEmailProvider: (providerId) => ipcRenderer.invoke('test-email-provider', providerId)
 }
 

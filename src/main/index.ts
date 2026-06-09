@@ -11,6 +11,7 @@ import { ProxyManager } from './proxy/proxy-manager'
 import { SettingsStore } from './settings'
 import { TokenLBProvider } from './site-providers/tokenlb'
 import { AccountStore } from './storage/account-store'
+import { RegistrationLogStore } from './storage/registration-log-store'
 import type { JobProgressEvent, ManualOtpRequest } from '../shared/contracts'
 
 let mainWindow: BrowserWindow | null = null
@@ -24,6 +25,7 @@ const settingsStore = new SettingsStore()
 const proxyManager = new ProxyManager()
 const registry = new ProviderRegistry()
 const accountStore = new AccountStore()
+const registrationLogStore = new RegistrationLogStore()
 const manualOtpRequests = new Map<
   string,
   {
@@ -89,6 +91,7 @@ const jobRunner = new JobRunner(
   browserPool,
   proxyManager,
   accountStore,
+  registrationLogStore,
   () => settingsStore.get(),
   broadcastProgress,
   requestManualOtp
@@ -136,6 +139,7 @@ app.whenReady().then(() => {
     proxyManager,
     browserPool,
     accountStore,
+    registrationLogStore,
     jobRunner,
     getMainWindow: () => mainWindow,
     onJobProgress: broadcastProgress

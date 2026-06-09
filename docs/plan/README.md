@@ -14,6 +14,7 @@ App Electron đăng ký tài khoản tự động, thiết kế **plugin-based**
 | [06-site-providers.md](./06-site-providers.md) | Site provider abstraction, tokenlb (New API) |
 | [07-storage-ui-ipc.md](./07-storage-ui-ipc.md) | Lưu JSON, export, UI, IPC |
 | [08-implementation-roadmap.md](./08-implementation-roadmap.md) | Thứ tự triển khai theo phase |
+| [09-site-integration-lessons.md](./09-site-integration-lessons.md) | Reusable lessons for future site integrations |
 
 ## Nguyên tắc thiết kế
 

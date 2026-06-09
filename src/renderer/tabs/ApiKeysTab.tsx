@@ -6,6 +6,7 @@ import {
   Checkbox,
   CheckIcon,
   CopyIcon,
+  DownloadIcon,
   EmptyState,
   Field,
   Input,
@@ -151,6 +152,27 @@ export default function ApiKeysTab(): JSX.Element {
     setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1200)
   }
 
+  function handleExport(): void {
+    const lines = accounts
+      .filter((account) => account.apiKey)
+      .map((account) => `${account.username || account.email || account.id}|${account.apiKey}`)
+    if (lines.length === 0) {
+      setError('No API keys to export')
+      return
+    }
+
+    const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `api-keys-${Date.now()}.txt`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    setMessage(`Exported ${lines.length} API key(s).`)
+  }
+
   const selectedAccount = accounts.find((account) => account.id === accountId)
 
   return (
@@ -266,6 +288,9 @@ export default function ApiKeysTab(): JSX.Element {
               </Button>
               <Button variant="ghost" icon={<RefreshIcon size={15} />} onClick={() => void load()}>
                 Refresh
+              </Button>
+              <Button variant="secondary" icon={<DownloadIcon size={15} />} onClick={handleExport}>
+                Export TXT
               </Button>
             </div>
           </Card>

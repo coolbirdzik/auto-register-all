@@ -12,6 +12,7 @@ import type { ManualOtpRequester } from '../../shared/contracts/job-context'
 import type { BrowserPool } from '../browser/browser-pool'
 import type { ProxyManager } from '../proxy/proxy-manager'
 import type { AccountStore } from '../storage/account-store'
+import type { RegistrationLogStore } from '../storage/registration-log-store'
 import type { ProviderRegistry } from './registry'
 
 export class JobRunner {
@@ -24,6 +25,7 @@ export class JobRunner {
     private browserPool: BrowserPool,
     private proxyManager: ProxyManager,
     private accountStore: AccountStore,
+    private registrationLogStore: RegistrationLogStore,
     private getSettings: () => AppSettings,
     private onProgress: (event: JobProgressEvent) => void,
     private requestManualOtp?: ManualOtpRequester
@@ -131,6 +133,23 @@ export class JobRunner {
             level: 'info',
             message: `Using proxy: ${proxy.type}://${proxy.host}:${proxy.port}`
           })
+          const proxyTest = await this.proxyManager.test(proxy)
+          if (!proxyTest.ok) {
+            const error = `proxy_test_failed: ${proxyTest.error ?? 'timeout'}`
+            const site = this.registry.getSite(options.siteId)
+            const result: RegisterResult = { success: false, error }
+            failCount++
+            await this.saveFailureLog(result, jobId, options.siteId, site.name, profileId, proxy.id)
+            this.onProgress({ type: 'log', jobId, level: 'warn', message: `Skipping job: ${error}` })
+            this.onProgress({ type: 'job_completed', jobId, result })
+            return
+          }
+          this.onProgress({
+            type: 'log',
+            jobId,
+            level: 'info',
+            message: `Proxy OK: ${proxyTest.ip ?? 'unknown ip'} (${proxyTest.latencyMs}ms)`
+          })
         }
         const headless = options.headless ?? settings.defaults.headless ?? true
         browserSession = await this.browserPool.acquire(profileId, proxy, headless)
@@ -167,16 +186,16 @@ export class JobRunner {
         const site = this.registry.getSite(options.siteId)
         const result = await site.register(ctx, { siteConfig })
 
-        const account = await this.saveResult(
-          result,
-          options.siteId,
-          site.name,
-          browserSession.profileId,
-          proxy?.id
-        )
+        const account = result.success
+          ? await this.saveResult(result, options.siteId, site.name, browserSession.profileId, proxy?.id)
+          : undefined
 
-        if (result.success) successCount++
-        else failCount++
+        if (result.success) {
+          successCount++
+        } else {
+          failCount++
+          await this.saveFailureLog(result, jobId, options.siteId, site.name, browserSession.profileId, proxy?.id)
+        }
 
         this.onProgress({ type: 'job_completed', jobId, result, account })
       } catch (err) {
@@ -185,16 +204,10 @@ export class JobRunner {
         failCount++
 
         const site = this.registry.getSite(options.siteId)
-        const account = await this.saveResult(
-          result,
-          options.siteId,
-          site.name,
-          browserSession?.profileId,
-          undefined
-        )
+        await this.saveFailureLog(result, jobId, options.siteId, site.name, browserSession?.profileId, undefined)
 
         this.onProgress({ type: 'log', jobId, level: 'error', message: error })
-        this.onProgress({ type: 'job_completed', jobId, result, account })
+        this.onProgress({ type: 'job_completed', jobId, result })
       } finally {
         if (browserSession) {
           const clearCookies = options.browser?.clearCookiesOnRelease ?? true
@@ -284,5 +297,28 @@ export class JobRunner {
     }
     await this.accountStore.append(record)
     return record
+  }
+
+  private async saveFailureLog(
+    result: RegisterResult,
+    jobId: string,
+    siteId: string,
+    siteName: string,
+    browserProfileId?: string,
+    proxyId?: string
+  ): Promise<void> {
+    await this.registrationLogStore.append({
+      id: uuidv4(),
+      jobId,
+      siteId,
+      siteName,
+      status: 'failed',
+      error: result.error ?? 'registration_failed',
+      email: result.credentials?.email,
+      username: result.credentials?.username,
+      browserProfileId,
+      proxyId,
+      createdAt: new Date().toISOString()
+    })
   }
 }

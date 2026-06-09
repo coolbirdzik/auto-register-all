@@ -27,6 +27,7 @@ import {
 import { generatePassword, generateUsernameFromEmail } from './credentials'
 
 const FIELD_STEP_DELAY_MS = 400
+const MAX_INBOX_ATTEMPTS = 5
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -213,8 +214,19 @@ export class TokenLBProvider implements SiteProvider {
       }
     }
 
-    ctx.log('info', 'Creating temporary email inbox...')
-    return emailProvider.createInbox(ctx)
+    for (let attempt = 1; attempt <= MAX_INBOX_ATTEMPTS; attempt++) {
+      ctx.log('info', `Creating temporary email inbox (${attempt}/${MAX_INBOX_ATTEMPTS})...`)
+      const inbox = await emailProvider.createInbox(ctx)
+      if (!emailProvider.validateInbox) return inbox
+
+      ctx.log('info', `Validating inbox availability: ${inbox.address}`)
+      const available = await emailProvider.validateInbox(ctx, inbox)
+      if (available) return inbox
+
+      ctx.log('warn', `Email is currently not available, retrying: ${inbox.address}`)
+    }
+
+    throw new Error('email_inbox_unavailable')
   }
 
   private buildSignUpUrl(baseUrl: string, affCode: string): string {

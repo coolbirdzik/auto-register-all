@@ -14,6 +14,7 @@ export interface EmailProvider {
   getConfigSchema(): ConfigField[]
   validateConfig(config: Record<string, unknown>): Promise<boolean>
   createInbox(ctx: JobContext, options?: CreateInboxOptions): Promise<Inbox>
+  validateInbox?(ctx: JobContext, inbox: Inbox): Promise<boolean>
   waitForMessage(
     ctx: JobContext,
     inbox: Inbox,

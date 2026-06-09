@@ -131,6 +131,20 @@ export interface AccountRecord {
   error?: string
 }
 
+export interface RegistrationLogRecord {
+  id: string
+  jobId: string
+  siteId: string
+  siteName: string
+  status: 'failed'
+  error: string
+  email?: string
+  username?: string
+  browserProfileId?: string
+  proxyId?: string
+  createdAt: string
+}
+
 export interface NewApiTokenRecord {
   id: number
   user_id: number

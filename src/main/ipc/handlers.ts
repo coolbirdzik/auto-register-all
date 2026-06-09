@@ -21,6 +21,7 @@ import { ZingProxyClient } from '../proxy/zingproxy-client'
 import type { ProxyManager } from '../proxy/proxy-manager'
 import type { SettingsStore } from '../settings'
 import type { AccountStore } from '../storage/account-store'
+import type { RegistrationLogStore } from '../storage/registration-log-store'
 import { NewApiTokenClient } from '../new-api/token-client'
 
 export function registerIpcHandlers(deps: {
@@ -29,6 +30,7 @@ export function registerIpcHandlers(deps: {
   proxyManager: ProxyManager
   browserPool: BrowserPool
   accountStore: AccountStore
+  registrationLogStore: RegistrationLogStore
   jobRunner: JobRunner
   getMainWindow: () => BrowserWindow | null
   onJobProgress: (event: JobProgressEvent) => void
@@ -39,6 +41,7 @@ export function registerIpcHandlers(deps: {
     proxyManager,
     browserPool,
     accountStore,
+    registrationLogStore,
     jobRunner,
     getMainWindow
   } = deps
@@ -400,6 +403,10 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle('delete-account', (_e, id: string) => accountStore.delete(id))
 
   ipcMain.handle('delete-accounts', (_e, ids: string[]) => accountStore.deleteMany(ids))
+
+  ipcMain.handle('get-registration-logs', () => registrationLogStore.list())
+
+  ipcMain.handle('clear-registration-logs', () => registrationLogStore.clear())
 
   ipcMain.handle('create-new-api-key', async (_e, options: CreateNewApiKeyOptions) => {
     const account = await accountStore.get(options.accountId)

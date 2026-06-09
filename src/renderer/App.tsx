@@ -7,9 +7,11 @@ import BrowsersTab from './tabs/BrowsersTab'
 import TargetSitesTab from './tabs/TargetSitesTab'
 import SettingsTab from './tabs/SettingsTab'
 import ApiKeysTab from './tabs/ApiKeysTab'
+import LogsTab from './tabs/LogsTab'
 import { Button, Field, Input } from './components/ui'
 import {
   BrowserIcon,
+  AlertTriangleIcon,
   GlobeIcon,
   RocketIcon,
   ServerIcon,
@@ -19,13 +21,14 @@ import {
   type IconProps
 } from './components/ui/Icons'
 
-type Tab = 'register' | 'targets' | 'accounts' | 'apiKeys' | 'proxies' | 'browsers' | 'settings'
+type Tab = 'register' | 'targets' | 'accounts' | 'apiKeys' | 'logs' | 'proxies' | 'browsers' | 'settings'
 
 const TABS: { id: Tab; label: string; icon: (props: IconProps) => JSX.Element }[] = [
   { id: 'register', label: 'Register', icon: RocketIcon },
   { id: 'targets', label: 'Target Sites', icon: GlobeIcon },
   { id: 'accounts', label: 'Accounts', icon: UsersIcon },
   { id: 'apiKeys', label: 'API Keys', icon: ServerIcon },
+  { id: 'logs', label: 'Logs', icon: AlertTriangleIcon },
   { id: 'proxies', label: 'Proxies', icon: GlobeIcon },
   { id: 'browsers', label: 'Browsers', icon: BrowserIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon }
@@ -118,6 +121,9 @@ export default function App(): JSX.Element {
           </div>
           <div hidden={tab !== 'apiKeys'}>
             <ApiKeysTab />
+          </div>
+          <div hidden={tab !== 'logs'}>
+            <LogsTab />
           </div>
           <div hidden={tab !== 'proxies'}>
             <ProxiesTab />

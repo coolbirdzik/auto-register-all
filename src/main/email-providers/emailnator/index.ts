@@ -12,8 +12,8 @@ import { extractVerificationCode } from '../gmailnator/parser'
 import { EmailnatorClient } from './client'
 import type { EmailnatorMessageListItem } from './types'
 
-const INITIAL_INBOX_WAIT_MS = 20000
-const INBOX_POLL_INTERVAL_MS = 25000
+const INITIAL_INBOX_WAIT_MS = 10000
+const INBOX_POLL_INTERVAL_MS = 10000
 const MAX_INBOX_POLLS = 3
 const DEFAULT_EMAIL_TYPES = ['plusGmail', 'dotGmail', 'googleMail']
 const ALLOWED_EMAIL_TYPES = new Set(DEFAULT_EMAIL_TYPES)
@@ -91,6 +91,10 @@ export class EmailnatorProvider implements EmailProvider {
       providerId: this.id,
       createdAt: new Date().toISOString()
     }
+  }
+
+  async validateInbox(ctx: JobContext, inbox: Inbox): Promise<boolean> {
+    return this.client.validateInbox(ctx, inbox.address)
   }
 
   async waitForMessage(

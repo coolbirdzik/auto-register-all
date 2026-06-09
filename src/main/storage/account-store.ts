@@ -58,6 +58,23 @@ export class AccountStore {
     })
   }
 
+  async get(id: string): Promise<AccountRecord | undefined> {
+    const accounts = await this.readAll()
+    return accounts.find((a) => a.id === id)
+  }
+
+  async update(id: string, patch: Partial<AccountRecord>): Promise<AccountRecord> {
+    return this.withLock(async () => {
+      const accounts = await this.readAll()
+      const index = accounts.findIndex((a) => a.id === id)
+      if (index === -1) throw new Error(`Account not found: ${id}`)
+      const updated = { ...accounts[index], ...patch }
+      accounts[index] = updated
+      await this.writeAll(accounts)
+      return updated
+    })
+  }
+
   async deleteMany(ids: string[]): Promise<void> {
     const idSet = new Set(ids)
     await this.withLock(async () => {

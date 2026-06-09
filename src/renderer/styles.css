@@ -389,6 +389,12 @@ body {
   font-size: 12.5px;
 }
 
+.field-success {
+  margin-top: 8px;
+  color: var(--success);
+  font-size: 12.5px;
+}
+
 .control {
   width: 100%;
   padding: 9px 12px;

@@ -1,4 +1,4 @@
-import { BrowserWindow, session as electronSession } from 'electron'
+import { BrowserWindow, session as electronSession, type Cookie } from 'electron'
 import type { BrowserProfile, BrowserSession, ProxyConfig } from '../../shared/contracts'
 import type { ProxyManager } from '../proxy/proxy-manager'
 import { createBrowserProfile } from './browser-profile'
@@ -301,5 +301,35 @@ export class BrowserPool {
     }
     win.show()
     win.focus()
+  }
+
+  async getCookies(profileId: string, url: string): Promise<Cookie[]> {
+    const profile = this.profiles.find((p) => p.id === profileId)
+    if (!profile) throw new Error(`Profile not found: ${profileId}`)
+    const ses = electronSession.fromPartition(profile.partition)
+    const byUrl = await ses.cookies.get({ url })
+    if (byUrl.length > 0) return byUrl
+
+    const hostname = new URL(url).hostname
+    const all = await ses.cookies.get({})
+    return all.filter((cookie) => {
+      const domain = cookie.domain.replace(/^\./, '')
+      return hostname === domain || hostname.endsWith(`.${domain}`)
+    })
+  }
+
+  async executeInProfile<T>(profileId: string, url: string, script: string): Promise<T> {
+    const profile = this.profiles.find((p) => p.id === profileId)
+    if (!profile) throw new Error(`Profile not found: ${profileId}`)
+    const proxy = this.resolveProxy(profile)
+    let win = this.windows.get(profileId)
+    if (!win || win.isDestroyed()) {
+      win = await this.createWindow(profile, proxy, true)
+      this.windows.set(profileId, win)
+    }
+    if (!win.webContents.getURL().startsWith(new URL(url).origin)) {
+      await win.loadURL(url)
+    }
+    return win.webContents.executeJavaScript(script, true)
   }
 }

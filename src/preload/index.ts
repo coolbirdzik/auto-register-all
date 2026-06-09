@@ -4,6 +4,8 @@ import type {
   AccountRecord,
   AppSettings,
   BrowserProfile,
+  CreateNewApiKeyOptions,
+  CreateNewApiKeyResult,
   ExportOptions,
   FreeProxySettings,
   JobProgressEvent,
@@ -42,6 +44,7 @@ export interface ElectronAPI {
   exportAccounts(options: ExportOptions): Promise<{ canceled: boolean; path?: string }>
   deleteAccount(id: string): Promise<void>
   deleteAccounts(ids: string[]): Promise<void>
+  createNewApiKey(options: CreateNewApiKeyOptions): Promise<CreateNewApiKeyResult>
   testEmailProvider(providerId: string): Promise<{ success: boolean; email?: string; error?: string }>
 }
 
@@ -78,6 +81,7 @@ const api: ElectronAPI = {
   exportAccounts: (options) => ipcRenderer.invoke('export-accounts', options),
   deleteAccount: (id) => ipcRenderer.invoke('delete-account', id),
   deleteAccounts: (ids) => ipcRenderer.invoke('delete-accounts', ids),
+  createNewApiKey: (options) => ipcRenderer.invoke('create-new-api-key', options),
   testEmailProvider: (providerId) => ipcRenderer.invoke('test-email-provider', providerId)
 }
 

@@ -124,7 +124,49 @@ export interface AccountRecord {
   status: 'success' | 'failed'
   browserProfileId?: string
   proxyId?: string
+  apiKey?: string
+  apiKeyName?: string
+  apiKeyId?: number
+  apiKeyCreatedAt?: string
   error?: string
+}
+
+export interface NewApiTokenRecord {
+  id: number
+  user_id: number
+  key: string
+  status: number
+  name: string
+  created_time: number
+  accessed_time: number
+  expired_time: number
+  remain_quota: number
+  unlimited_quota: boolean
+  model_limits_enabled: boolean
+  model_limits: string
+  allow_ips: string
+  used_quota: number
+  group: string
+  cross_group_retry: boolean
+  DeletedAt: unknown
+}
+
+export interface CreateNewApiKeyOptions {
+  accountId: string
+  name: string
+  unlimitedQuota: boolean
+  remainQuota: number
+  expiredTime: number
+  group: string
+  modelLimitsEnabled: boolean
+  modelLimits: string
+  allowIps: string
+  crossGroupRetry: boolean
+}
+
+export interface CreateNewApiKeyResult {
+  account: AccountRecord
+  token: NewApiTokenRecord
 }
 
 export interface AppSettings {

@@ -212,6 +212,7 @@ export default function AccountsTab(): JSX.Element {
                   <th>Site</th>
                   <th>Username</th>
                   <th>Password</th>
+                  <th>API Key</th>
                   <th>Email</th>
                   <th>Time</th>
                   <th>Status</th>
@@ -252,6 +253,20 @@ export default function AccountsTab(): JSX.Element {
                           >
                             {copiedId === a.id ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
                           </button>
+                        </span>
+                      </td>
+                      <td>
+                        <span className="password-cell">
+                          <span className="password-value">{a.apiKey || '—'}</span>
+                          {a.apiKey && (
+                            <button
+                              className="icon-btn"
+                              title="Copy API key"
+                              onClick={() => handleCopy(`${a.id}:api-key`, a.apiKey || '')}
+                            >
+                              {copiedId === `${a.id}:api-key` ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
+                            </button>
+                          )}
                         </span>
                       </td>
                       <td className="mono">{a.email || '—'}</td>

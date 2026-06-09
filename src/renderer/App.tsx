@@ -6,23 +6,26 @@ import ProxiesTab from './tabs/ProxiesTab'
 import BrowsersTab from './tabs/BrowsersTab'
 import TargetSitesTab from './tabs/TargetSitesTab'
 import SettingsTab from './tabs/SettingsTab'
+import ApiKeysTab from './tabs/ApiKeysTab'
 import { Button, Field, Input } from './components/ui'
 import {
   BrowserIcon,
   GlobeIcon,
   RocketIcon,
+  ServerIcon,
   SettingsIcon,
   UsersIcon,
   ZapIcon,
   type IconProps
 } from './components/ui/Icons'
 
-type Tab = 'register' | 'targets' | 'accounts' | 'proxies' | 'browsers' | 'settings'
+type Tab = 'register' | 'targets' | 'accounts' | 'apiKeys' | 'proxies' | 'browsers' | 'settings'
 
 const TABS: { id: Tab; label: string; icon: (props: IconProps) => JSX.Element }[] = [
   { id: 'register', label: 'Register', icon: RocketIcon },
   { id: 'targets', label: 'Target Sites', icon: GlobeIcon },
   { id: 'accounts', label: 'Accounts', icon: UsersIcon },
+  { id: 'apiKeys', label: 'API Keys', icon: ServerIcon },
   { id: 'proxies', label: 'Proxies', icon: GlobeIcon },
   { id: 'browsers', label: 'Browsers', icon: BrowserIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon }
@@ -104,12 +107,27 @@ export default function App(): JSX.Element {
 
       <main className="content">
         <div className="content-inner">
-          {tab === 'register' && <RegisterTab />}
-          {tab === 'targets' && <TargetSitesTab />}
-          {tab === 'accounts' && <AccountsTab />}
-          {tab === 'proxies' && <ProxiesTab />}
-          {tab === 'browsers' && <BrowsersTab />}
-          {tab === 'settings' && <SettingsTab />}
+          <div hidden={tab !== 'register'}>
+            <RegisterTab />
+          </div>
+          <div hidden={tab !== 'targets'}>
+            <TargetSitesTab />
+          </div>
+          <div hidden={tab !== 'accounts'}>
+            <AccountsTab />
+          </div>
+          <div hidden={tab !== 'apiKeys'}>
+            <ApiKeysTab />
+          </div>
+          <div hidden={tab !== 'proxies'}>
+            <ProxiesTab />
+          </div>
+          <div hidden={tab !== 'browsers'}>
+            <BrowsersTab />
+          </div>
+          <div hidden={tab !== 'settings'}>
+            <SettingsTab />
+          </div>
         </div>
       </main>
 

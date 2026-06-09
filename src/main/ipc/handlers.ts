@@ -5,6 +5,7 @@ import type {
   AppSettings,
   BrowserProfile,
   ExportOptions,
+  FreeProxySettings,
   JobProgressEvent,
   ProxyConfig,
   StartJobOptions,
@@ -14,6 +15,7 @@ import type { BrowserPool } from '../browser/browser-pool'
 import type { JobRunner } from '../core/job-runner'
 import type { ProviderRegistry } from '../core/registry'
 import { parseProxyList } from '../proxy/proxy-parser'
+import { FreeProxyClient } from '../proxy/free-proxy-client'
 import { ZingProxyClient } from '../proxy/zingproxy-client'
 import type { ProxyManager } from '../proxy/proxy-manager'
 import type { SettingsStore } from '../settings'
@@ -45,6 +47,21 @@ export function registerIpcHandlers(deps: {
     browserPool.setProfiles(settings.browsers)
   }
 
+  const importProxyBatch = (proxies: ProxyConfig[]): ProxyConfig[] => {
+    const existing = new Set(
+      proxyManager.list().map((p) => `${p.type}:${p.host}:${p.port}:${p.username ?? ''}`)
+    )
+    const unique = proxies.filter((proxy) => {
+      const key = `${proxy.type}:${proxy.host}:${proxy.port}:${proxy.username ?? ''}`
+      if (existing.has(key)) return false
+      existing.add(key)
+      return true
+    })
+    const added = unique.filter((proxy) => proxyManager.add(proxy))
+    settingsStore.updateProxies(proxyManager.list())
+    return added
+  }
+
   syncFromSettings()
 
   ipcMain.handle('get-settings', () => settingsStore.get())
@@ -66,9 +83,7 @@ export function registerIpcHandlers(deps: {
 
   ipcMain.handle('import-proxies', (_e, text: string) => {
     const imported = parseProxyList(text)
-    const added = imported.filter((p) => proxyManager.add(p))
-    settingsStore.updateProxies(proxyManager.list())
-    return added
+    return importProxyBatch(imported)
   })
 
   ipcMain.handle('import-zingproxy-proxies', async (_e, config: ZingProxySettings) => {
@@ -85,18 +100,30 @@ export function registerIpcHandlers(deps: {
 
     const client = new ZingProxyClient(settingsStore.get().proxyProviders?.zingproxy ?? config)
     const fetched = await client.importProxies()
-    const existing = new Set(
-      proxyManager.list().map((p) => `${p.type}:${p.host}:${p.port}:${p.username ?? ''}`)
-    )
-    const imported = fetched.filter((p) => {
-      const key = `${p.type}:${p.host}:${p.port}:${p.username ?? ''}`
-      if (existing.has(key)) return false
-      existing.add(key)
-      return true
+    const added = importProxyBatch(fetched)
+
+    return {
+      imported: added,
+      skipped: fetched.length - added.length,
+      message: `Fetched ${fetched.length} proxy endpoint(s)`
+    }
+  })
+
+  ipcMain.handle('import-free-proxies', async (_e, config: FreeProxySettings) => {
+    const current = settingsStore.get()
+    settingsStore.save({
+      proxyProviders: {
+        ...current.proxyProviders,
+        freeProxy: {
+          ...(current.proxyProviders?.freeProxy ?? {}),
+          ...config
+        }
+      }
     })
 
-    const added = imported.filter((proxy) => proxyManager.add(proxy))
-    settingsStore.updateProxies(proxyManager.list())
+    const client = new FreeProxyClient(settingsStore.get().proxyProviders?.freeProxy ?? config)
+    const fetched = await client.importProxies()
+    const added = importProxyBatch(fetched)
 
     return {
       imported: added,

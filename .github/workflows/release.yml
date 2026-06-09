@@ -1,0 +1,161 @@
+name: Build Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to build. Defaults to the current ref or a generated tag."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: Windows
+            os: windows-latest
+            script: npm run dist:win
+            artifact: auto-register-windows
+            files: |
+              release/*.exe
+              release/*.blockmap
+              release/latest*.yml
+          - name: macOS
+            os: macos-latest
+            script: npm run dist:mac
+            artifact: auto-register-macos
+            files: |
+              release/*.dmg
+              release/*.zip
+              release/*.blockmap
+              release/latest*.yml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag_name || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: ${{ matrix.platform.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform.artifact }}
+          path: ${{ matrix.platform.files }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag_name || github.ref }}
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        env:
+          RELEASE_TAG_INPUT: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag_name="${GITHUB_REF_NAME}"
+          elif [[ -n "${RELEASE_TAG_INPUT}" ]]; then
+            tag_name="${RELEASE_TAG_INPUT}"
+          elif git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+            tag_name="$(git describe --tags --exact-match HEAD)"
+          else
+            tag_name="v$(node -p "require('./package.json').version")-${GITHUB_SHA::7}"
+          fi
+
+          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create tag for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_name="${{ steps.tag.outputs.tag_name }}"
+
+          if ! git rev-parse "${tag_name}" >/dev/null 2>&1; then
+            git tag "${tag_name}" "${GITHUB_SHA}"
+            git push origin "${tag_name}"
+          fi
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag_name="${{ steps.tag.outputs.tag_name }}"
+          current_commit="$(git rev-list -n 1 "${tag_name}")"
+          previous_tag="$(git describe --tags --abbrev=0 "${tag_name}^" 2>/dev/null || true)"
+
+          {
+            echo "## Build"
+            echo
+            echo "- Tag: ${tag_name}"
+            echo "- Commit: ${current_commit}"
+            echo
+
+            if [[ -n "${previous_tag}" ]]; then
+              previous_commit="$(git rev-list -n 1 "${previous_tag}")"
+              echo "## Changes since ${previous_tag}"
+              echo
+              echo "- From: ${previous_commit}"
+              echo "- To: ${current_commit}"
+              echo
+              git log --no-merges --pretty=format:"- %h %s" "${previous_tag}..${tag_name}"
+            else
+              echo "## Changes"
+              echo
+              echo "No previous tag was found. Including commits up to ${current_commit}."
+              echo
+              git log --no-merges --pretty=format:"- %h %s" "${tag_name}"
+            fi
+          } > release-notes.md
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: ${{ steps.tag.outputs.tag_name }}
+          body_path: release-notes.md
+          files: release-artifacts/*
+          fail_on_unmatched_files: true

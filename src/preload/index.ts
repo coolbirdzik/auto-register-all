@@ -5,6 +5,7 @@ import type {
   AppSettings,
   BrowserProfile,
   ExportOptions,
+  FreeProxySettings,
   JobProgressEvent,
   ManualOtpRequest,
   ProxyConfig,
@@ -25,6 +26,7 @@ export interface ElectronAPI {
   addProxy(proxy: ProxyConfig): Promise<void>
   importProxies(text: string): Promise<ProxyConfig[]>
   importZingProxyProxies(config: ZingProxySettings): Promise<ZingProxyImportResult>
+  importFreeProxies(config: FreeProxySettings): Promise<ZingProxyImportResult>
   testProxy(proxyId: string): Promise<ProxyTestResult>
   removeProxy(proxyId: string): Promise<void>
   listBrowserProfiles(): Promise<BrowserProfile[]>
@@ -52,6 +54,7 @@ const api: ElectronAPI = {
   addProxy: (proxy) => ipcRenderer.invoke('add-proxy', proxy),
   importProxies: (text) => ipcRenderer.invoke('import-proxies', text),
   importZingProxyProxies: (config) => ipcRenderer.invoke('import-zingproxy-proxies', config),
+  importFreeProxies: (config) => ipcRenderer.invoke('import-free-proxies', config),
   testProxy: (proxyId) => ipcRenderer.invoke('test-proxy', proxyId),
   removeProxy: (proxyId) => ipcRenderer.invoke('remove-proxy', proxyId),
   listBrowserProfiles: () => ipcRenderer.invoke('list-browser-profiles'),

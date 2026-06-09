@@ -8,8 +8,13 @@ const DEFAULT_SETTINGS: AppSettings = {
     }
   },
   proxyProviders: {
-    zingproxy: {}
+    zingproxy: {},
+    freeProxy: {
+      source: 'proxyscrape',
+      country: 'vn'
+    }
   },
+  migrations: {},
   siteConfigs: {
     tokenlb: {
       baseUrl: 'https://tokenlb.net',
@@ -33,7 +38,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaults: {
     siteId: 'tokenlb',
     targetSiteId: 'tokenlb-default',
-    emailProviderId: 'gmailnator',
+    emailProviderId: 'emailnator',
     browserMode: 'auto',
     proxyMode: 'none',
     maxConcurrent: 1,
@@ -53,6 +58,7 @@ export class SettingsStore {
       defaults: DEFAULT_SETTINGS
     })
     this.migrateDefaultConcurrency()
+    this.migrateDefaultEmailProvider()
     this.removeUnsupportedProxies()
   }
 
@@ -61,6 +67,16 @@ export class SettingsStore {
     if (maxConcurrent === 3) {
       this.store.set('defaults.maxConcurrent', DEFAULT_SETTINGS.defaults.maxConcurrent)
     }
+  }
+
+  private migrateDefaultEmailProvider(): void {
+    if (this.store.store.migrations?.emailnatorDefaultApplied) return
+
+    const emailProviderId = this.store.store.defaults?.emailProviderId
+    if (!emailProviderId || emailProviderId === 'gmailnator') {
+      this.store.set('defaults.emailProviderId', DEFAULT_SETTINGS.defaults.emailProviderId)
+    }
+    this.store.set('migrations.emailnatorDefaultApplied', true)
   }
 
   private removeUnsupportedProxies(): void {
@@ -92,6 +108,7 @@ export class SettingsStore {
       return {
         ...settings,
         emailProviders: this.mergeEmailProviders(settings),
+        migrations: settings.migrations ?? DEFAULT_SETTINGS.migrations,
         targetSites,
         proxies: settings.proxies.filter((proxy) => proxy.type !== 'socks5'),
         defaults: {
@@ -110,6 +127,10 @@ export class SettingsStore {
           zingproxy: {
             ...DEFAULT_SETTINGS.proxyProviders?.zingproxy,
             ...(settings.proxyProviders?.zingproxy ?? {})
+          },
+          freeProxy: {
+            ...DEFAULT_SETTINGS.proxyProviders?.freeProxy,
+            ...(settings.proxyProviders?.freeProxy ?? {})
           }
         }
       }
@@ -117,6 +138,7 @@ export class SettingsStore {
     return {
       ...settings,
       emailProviders: this.mergeEmailProviders(settings),
+      migrations: settings.migrations ?? DEFAULT_SETTINGS.migrations,
       targetSites,
       proxies: settings.proxies.filter((proxy) => proxy.type !== 'socks5'),
       defaults: {
@@ -128,6 +150,10 @@ export class SettingsStore {
         zingproxy: {
           ...DEFAULT_SETTINGS.proxyProviders?.zingproxy,
           ...(settings.proxyProviders?.zingproxy ?? {})
+        },
+        freeProxy: {
+          ...DEFAULT_SETTINGS.proxyProviders?.freeProxy,
+          ...(settings.proxyProviders?.freeProxy ?? {})
         }
       }
     }
@@ -140,6 +166,7 @@ export class SettingsStore {
       ...partial,
       emailProviders: partial.emailProviders ?? current.emailProviders,
       proxyProviders: partial.proxyProviders ?? current.proxyProviders,
+      migrations: partial.migrations ?? current.migrations,
       siteConfigs: partial.siteConfigs ?? current.siteConfigs,
       targetSites: partial.targetSites ?? current.targetSites,
       browsers: partial.browsers ?? current.browsers,

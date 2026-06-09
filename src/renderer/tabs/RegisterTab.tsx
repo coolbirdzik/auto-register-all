@@ -65,7 +65,7 @@ export default function RegisterTab(): JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [siteId, setSiteId] = useState('tokenlb')
   const [targetSiteId, setTargetSiteId] = useState('')
-  const [emailId, setEmailId] = useState('gmailnator')
+  const [emailId, setEmailId] = useState('emailnator')
   const [browserMode, setBrowserMode] = useState<'auto' | 'fixed' | 'rotate'>('auto')
   const [profileId, setProfileId] = useState('')
   const [proxyMode, setProxyMode] = useState<'none' | 'fixed' | 'rotate' | 'profile'>('none')

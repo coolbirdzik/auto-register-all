@@ -1,0 +1,92 @@
+# Auto Register
+
+Auto Register is an Electron desktop application built for learning and experimentation. The project demonstrates how to structure an Electron, React, and TypeScript app with provider-based registration flows, local settings, proxy management, and release packaging.
+
+This project is intended for educational use only. Use it responsibly and only with services, accounts, and traffic that you are allowed to test.
+
+## Supported Sites
+
+- TokenLB
+
+## Features
+
+- Desktop app built with Electron, Electron Vite, React, and TypeScript.
+- Provider-based architecture for target sites and email inbox providers.
+- TokenLB registration workflow support.
+- Email provider support, with Emailnator selected as the default provider.
+- Browser profile management for registration sessions.
+- Proxy pool management with manual import, TXT/JSON import, ZingProxy import, and free proxy source import.
+- Account storage and export.
+- GitHub Actions release workflow for Windows and macOS builds.
+
+## Requirements
+
+- Node.js 20 or newer.
+- npm.
+
+## Development
+
+Install dependencies:
+
+```bash
+npm ci
+```
+
+Start the development app:
+
+```bash
+npm run dev
+```
+
+Build the app source:
+
+```bash
+npm run build
+```
+
+## Packaging
+
+Build a Windows installer:
+
+```bash
+npm run dist:win
+```
+
+Build a macOS package:
+
+```bash
+npm run dist:mac
+```
+
+Build using the default Electron Builder target for the current platform:
+
+```bash
+npm run dist
+```
+
+Packaged files are written to the `release` directory.
+
+## GitHub Releases
+
+The release workflow runs when a version tag is pushed:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow builds Windows and macOS packages, creates a GitHub Release, uploads the generated artifacts, and writes release notes from the previous tag to the current build tag.
+
+## Project Structure
+
+- `src/main`: Electron main process, IPC handlers, settings, providers, storage, and proxy logic.
+- `src/preload`: Safe bridge between the renderer and main process.
+- `src/renderer`: React UI.
+- `src/shared`: Shared contracts and types.
+- `docs/plan`: Planning and architecture notes.
+
+## Notes
+
+- Current site support is limited to TokenLB.
+- Free public proxies can be unreliable. Always test imported proxies before running jobs.
+- The application currently uses the default Electron icon unless custom icons are added.

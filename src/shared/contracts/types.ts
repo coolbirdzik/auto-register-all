@@ -19,6 +19,13 @@ export interface ZingProxySettings {
   accessToken?: string
 }
 
+export type FreeProxySource = 'proxyscrape' | 'speedx-http' | 'monosans-http'
+
+export interface FreeProxySettings {
+  source?: FreeProxySource
+  country?: string
+}
+
 export interface ZingProxyImportResult {
   imported: ProxyConfig[]
   skipped: number
@@ -124,6 +131,10 @@ export interface AppSettings {
   emailProviders: Record<string, Record<string, unknown>>
   proxyProviders?: {
     zingproxy?: ZingProxySettings
+    freeProxy?: FreeProxySettings
+  }
+  migrations?: {
+    emailnatorDefaultApplied?: boolean
   }
   siteConfigs: Record<string, Record<string, unknown>>
   targetSites: TargetSiteConfig[]

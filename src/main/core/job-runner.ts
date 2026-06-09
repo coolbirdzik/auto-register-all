@@ -1,0 +1,288 @@
+import { v4 as uuidv4 } from 'uuid'
+import type {
+  AccountRecord,
+  AppSettings,
+  JobProgressEvent,
+  JobProxyOptions,
+  RegisterResult,
+  StartJobOptions
+} from '../../shared/contracts'
+import type { JobContext } from '../../shared/contracts/job-context'
+import type { ManualOtpRequester } from '../../shared/contracts/job-context'
+import type { BrowserPool } from '../browser/browser-pool'
+import type { ProxyManager } from '../proxy/proxy-manager'
+import type { AccountStore } from '../storage/account-store'
+import type { ProviderRegistry } from './registry'
+
+export class JobRunner {
+  private abortControllers = new Map<string, AbortController>()
+  private running = false
+  private cancelAll = false
+
+  constructor(
+    private registry: ProviderRegistry,
+    private browserPool: BrowserPool,
+    private proxyManager: ProxyManager,
+    private accountStore: AccountStore,
+    private getSettings: () => AppSettings,
+    private onProgress: (event: JobProgressEvent) => void,
+    private requestManualOtp?: ManualOtpRequester
+  ) {}
+
+  isRunning(): boolean {
+    return this.running
+  }
+
+  async startBatch(options: StartJobOptions): Promise<{ batchId: string }> {
+    if (this.running) {
+      throw new Error('A batch is already running')
+    }
+
+    const batchId = uuidv4()
+    this.running = true
+    this.cancelAll = false
+
+    void this.runBatch(batchId, options)
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
+        this.onProgress({ type: 'log', jobId: batchId, level: 'error', message })
+        this.onProgress({ type: 'batch_completed', successCount: 0, failCount: 0 })
+      })
+      .finally(() => {
+        this.running = false
+        this.cancelAll = false
+      })
+
+    return { batchId }
+  }
+
+  cancelJob(jobId: string): void {
+    const controller = this.abortControllers.get(jobId)
+    controller?.abort()
+  }
+
+  cancelAllJobs(): void {
+    this.cancelAll = true
+    for (const controller of this.abortControllers.values()) {
+      controller.abort()
+    }
+  }
+
+  private async runBatch(batchId: string, options: StartJobOptions): Promise<void> {
+    const settings = this.getSettings()
+    const continuous = options.continuous ?? settings.defaults.continuousRun ?? false
+    const count = Math.max(1, Number(options.count) || 1)
+    const interJobDelayMs = options.interJobDelayMs ?? settings.defaults.interJobDelayMs
+    const maxConcurrent = Math.max(
+      1,
+      Math.min(
+        Number(options.maxConcurrent ?? settings.defaults.maxConcurrent) || 1,
+        this.browserPool.getMaxConcurrent(),
+        continuous ? Number.MAX_SAFE_INTEGER : count
+      )
+    )
+
+    this.onProgress({
+      type: 'log',
+      jobId: batchId,
+      level: 'info',
+      message: continuous
+        ? `Starting continuous batch, max ${maxConcurrent} concurrent`
+        : `Starting batch: ${count} job(s), max ${maxConcurrent} concurrent`
+    })
+
+    let successCount = 0
+    let failCount = 0
+    let nextIndex = 0
+    const inFlight: Promise<void>[] = []
+
+    const runOne = async (index: number): Promise<void> => {
+      if (this.cancelAll) return
+
+      const jobId = `${batchId}-${index}`
+      const controller = new AbortController()
+      this.abortControllers.set(jobId, controller)
+
+      this.onProgress({
+        type: 'job_started',
+        jobId,
+        index: index + 1,
+        total: count,
+        continuous
+      })
+
+      let browserSession
+      try {
+        const browserOpts = options.browser ?? { mode: settings.defaults.browserMode }
+        const proxyOpts = options.proxy ?? { mode: settings.defaults.proxyMode }
+
+        const profileId = this.browserPool.pickProfileForJob(
+          browserOpts.mode,
+          index,
+          browserOpts.profileId,
+          browserOpts.profileIds
+        )
+
+        const proxy = this.resolveProxy(proxyOpts, index, profileId, settings)
+        if (proxy) {
+          this.onProgress({
+            type: 'log',
+            jobId,
+            level: 'info',
+            message: `Using proxy: ${proxy.type}://${proxy.host}:${proxy.port}`
+          })
+        }
+        const headless = options.headless ?? settings.defaults.headless ?? true
+        browserSession = await this.browserPool.acquire(profileId, proxy, headless)
+
+        const siteConfig = {
+          ...(settings.siteConfigs[options.siteId] ?? {}),
+          ...(options.siteConfig ?? {})
+        }
+        const targetSite = options.targetSiteId
+          ? settings.targetSites.find((target) => target.id === options.targetSiteId)
+          : undefined
+        if (targetSite) {
+          siteConfig.targetSiteId = targetSite.id
+          siteConfig.targetSiteLabel = targetSite.label
+          siteConfig.startUrl = targetSite.startUrl
+        }
+
+        const ctx: JobContext = {
+          jobId,
+          siteId: options.siteId,
+          emailProviderId: options.emailProviderId,
+          browser: browserSession,
+          proxy: settings.defaults.useProxyForApi ? proxy : undefined,
+          customEmail: options.customEmail,
+          settings,
+          headless,
+          requestManualOtp: this.requestManualOtp,
+          log: (level, message) => {
+            this.onProgress({ type: 'log', jobId, level, message })
+          },
+          abortSignal: controller.signal
+        }
+
+        const site = this.registry.getSite(options.siteId)
+        const result = await site.register(ctx, { siteConfig })
+
+        const account = await this.saveResult(
+          result,
+          options.siteId,
+          site.name,
+          browserSession.profileId,
+          proxy?.id
+        )
+
+        if (result.success) successCount++
+        else failCount++
+
+        this.onProgress({ type: 'job_completed', jobId, result, account })
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err)
+        const result: RegisterResult = { success: false, error }
+        failCount++
+
+        const site = this.registry.getSite(options.siteId)
+        const account = await this.saveResult(
+          result,
+          options.siteId,
+          site.name,
+          browserSession?.profileId,
+          undefined
+        )
+
+        this.onProgress({ type: 'log', jobId, level: 'error', message: error })
+        this.onProgress({ type: 'job_completed', jobId, result, account })
+      } finally {
+        if (browserSession) {
+          const clearCookies = options.browser?.clearCookiesOnRelease ?? true
+          const headless = options.headless ?? settings.defaults.headless ?? true
+          this.browserPool.release(browserSession, false, clearCookies, headless)
+        }
+        this.abortControllers.delete(jobId)
+      }
+    }
+
+    const scheduleNext = (): void => {
+      if ((!continuous && nextIndex >= count) || this.cancelAll) return
+      const index = nextIndex++
+      const promise = runOne(index).then(() => {
+        if (interJobDelayMs > 0 && (continuous || nextIndex < count)) {
+          return new Promise<void>((r) => setTimeout(r, interJobDelayMs))
+        }
+      })
+      inFlight.push(promise)
+      promise.finally(() => {
+        const idx = inFlight.indexOf(promise)
+        if (idx !== -1) inFlight.splice(idx, 1)
+        if (inFlight.length < maxConcurrent && (continuous || nextIndex < count)) {
+          scheduleNext()
+        }
+      })
+    }
+
+    const initialJobs = continuous ? maxConcurrent : Math.min(maxConcurrent, count)
+    for (let i = 0; i < initialJobs; i++) {
+      scheduleNext()
+    }
+
+    while (inFlight.length > 0) {
+      await Promise.race(inFlight).catch(() => undefined)
+    }
+
+    this.onProgress({ type: 'batch_completed', successCount, failCount })
+  }
+
+  private resolveProxy(
+    proxyOpts: JobProxyOptions,
+    jobIndex: number,
+    profileId: string | undefined,
+    settings: AppSettings
+  ) {
+    switch (proxyOpts.mode) {
+      case 'none':
+        return undefined
+      case 'fixed':
+        return proxyOpts.proxyId ? this.proxyManager.get(proxyOpts.proxyId) : undefined
+      case 'rotate':
+        if (proxyOpts.proxyIds && proxyOpts.proxyIds.length > 0) {
+          return this.proxyManager.nextFromPool(proxyOpts.proxyIds, jobIndex)
+        }
+        return this.proxyManager.next('round-robin')
+      case 'profile': {
+        if (!profileId) return undefined
+        const profile = this.browserPool.listProfiles().find((p) => p.id === profileId)
+        if (!profile?.proxyId) return undefined
+        return this.proxyManager.get(profile.proxyId)
+      }
+      default:
+        return undefined
+    }
+  }
+
+  private async saveResult(
+    result: RegisterResult,
+    siteId: string,
+    siteName: string,
+    browserProfileId?: string,
+    proxyId?: string
+  ): Promise<AccountRecord> {
+    const record: AccountRecord = {
+      id: uuidv4(),
+      siteId,
+      siteName,
+      username: result.credentials?.username ?? '',
+      password: result.credentials?.password ?? '',
+      email: result.credentials?.email ?? '',
+      registeredAt: new Date().toISOString(),
+      status: result.success ? 'success' : 'failed',
+      browserProfileId,
+      proxyId,
+      error: result.error
+    }
+    await this.accountStore.append(record)
+    return record
+  }
+}

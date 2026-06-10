@@ -1,5 +1,11 @@
 import { app, BrowserWindow } from 'electron'
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater'
+import {
+  compareSemver,
+  downloadMacZip,
+  fetchLatestMacRelease,
+  installMacUpdate
+} from './mac-updater'
 
 export type UpdateStatus =
   | 'idle'
@@ -27,6 +33,7 @@ export interface UpdateState {
 }
 
 const RELEASES_URL = 'https://github.com/coolbirdzik/auto-register-all/releases'
+const IS_MAC = process.platform === 'darwin'
 
 let currentState: UpdateState = {
   status: 'idle',
@@ -35,6 +42,7 @@ let currentState: UpdateState = {
 
 let listeners = new Set<(state: UpdateState) => void>()
 let initialized = false
+let macDownloadedZipPath: string | null = null
 
 function emit(): void {
   for (const listener of listeners) {
@@ -76,13 +84,17 @@ export function initUpdater(): void {
     currentVersion: app.getVersion()
   }
 
-  // We drive updates manually, so disable any built-in automatic behavior.
+  // On macOS we use a custom updater path (mac-updater.ts) so that unsigned
+  // builds can self-update. Squirrel.Mac requires matching code signatures
+  // and we cannot satisfy that without an Apple Developer cert.
+  if (IS_MAC) return
+
+  // Windows: drive electron-updater manually so we can control the lifecycle.
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowDowngrade = false
   autoUpdater.allowPrerelease = false
 
-  // Pipe electron-updater logs into stdout for easier debugging in production.
   autoUpdater.logger = {
     info: (...args: unknown[]) => console.log('[updater]', ...args),
     warn: (...args: unknown[]) => console.warn('[updater]', ...args),
@@ -152,6 +164,88 @@ export function initUpdater(): void {
   })
 }
 
+async function checkMacForUpdates(): Promise<UpdateState> {
+  try {
+    setState({ status: 'checking', error: undefined })
+    const release = await fetchLatestMacRelease()
+    const current = app.getVersion()
+    const isNewer = release.version && compareSemver(release.version, current) > 0
+    if (!isNewer) {
+      setState({
+        status: 'not-available',
+        latestVersion: release.version,
+        releaseUrl: release.releaseUrl || RELEASES_URL
+      })
+      return currentState
+    }
+    if (!release.zipUrl) {
+      setState({
+        status: 'error',
+        latestVersion: release.version,
+        releaseUrl: release.releaseUrl || RELEASES_URL,
+        error: `No matching .zip asset for arch ${process.arch}`
+      })
+      return currentState
+    }
+    setState({
+      status: 'available',
+      latestVersion: release.version,
+      releaseName: release.releaseName,
+      releaseUrl: release.releaseUrl || RELEASES_URL
+    })
+  } catch (err) {
+    setState({
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+      releaseUrl: RELEASES_URL
+    })
+  }
+  return currentState
+}
+
+async function downloadMacUpdate(): Promise<UpdateState> {
+  try {
+    const release = await fetchLatestMacRelease()
+    if (!release.zipUrl) throw new Error(`No .zip asset for arch ${process.arch}`)
+
+    setState({
+      status: 'downloading',
+      latestVersion: release.version,
+      releaseName: release.releaseName,
+      releaseUrl: release.releaseUrl || RELEASES_URL,
+      progress: { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 },
+      error: undefined
+    })
+
+    const zipPath = await downloadMacZip(release.zipUrl, (progress) => {
+      setState({
+        status: 'downloading',
+        progress: {
+          percent: Math.max(0, Math.min(100, progress.percent)),
+          transferred: progress.transferred,
+          total: progress.total,
+          bytesPerSecond: progress.bytesPerSecond
+        }
+      })
+    })
+
+    macDownloadedZipPath = zipPath
+    setState({
+      status: 'downloaded',
+      latestVersion: release.version,
+      releaseUrl: release.releaseUrl || RELEASES_URL,
+      progress: { percent: 100, transferred: 0, total: 0, bytesPerSecond: 0 }
+    })
+  } catch (err) {
+    setState({
+      status: 'error',
+      error: err instanceof Error ? err.message : String(err),
+      releaseUrl: RELEASES_URL
+    })
+  }
+  return currentState
+}
+
 export async function checkForUpdates(): Promise<UpdateState> {
   if (!initialized) initUpdater()
 
@@ -163,6 +257,8 @@ export async function checkForUpdates(): Promise<UpdateState> {
     })
     return currentState
   }
+
+  if (IS_MAC) return checkMacForUpdates()
 
   try {
     setState({ status: 'checking', error: undefined })
@@ -199,6 +295,8 @@ export async function downloadUpdate(): Promise<UpdateState> {
     return currentState
   }
 
+  if (IS_MAC) return downloadMacUpdate()
+
   try {
     setState({ status: 'downloading', error: undefined, progress: undefined })
     await autoUpdater.downloadUpdate()
@@ -215,7 +313,19 @@ export async function downloadUpdate(): Promise<UpdateState> {
 export function quitAndInstall(): void {
   if (!initialized) initUpdater()
   if (currentState.status !== 'downloaded') return
-  // isSilent=true: run installer without UI prompts on Windows.
-  // isForceRunAfter=true: relaunch the app once installation completes.
+
+  if (IS_MAC) {
+    if (!macDownloadedZipPath) return
+    void installMacUpdate(macDownloadedZipPath).catch((err) => {
+      setState({
+        status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+        releaseUrl: RELEASES_URL
+      })
+    })
+    return
+  }
+
+  // Windows: isSilent=true runs NSIS silently, isForceRunAfter=true relaunches.
   setImmediate(() => autoUpdater.quitAndInstall(true, true))
 }

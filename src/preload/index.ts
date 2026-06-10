@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AccountFilter,
   AccountRecord,
+  AddAccountInput,
   AppSettings,
   BrowserProfile,
   CreateNewApiKeyOptions,
@@ -53,6 +54,7 @@ export interface ElectronAPI {
   exportAccounts(options: ExportOptions): Promise<{ canceled: boolean; path?: string }>
   deleteAccount(id: string): Promise<void>
   deleteAccounts(ids: string[]): Promise<void>
+  addAccount(input: AddAccountInput): Promise<AccountRecord>
   getRegistrationLogs(): Promise<RegistrationLogRecord[]>
   clearRegistrationLogs(): Promise<void>
   createNewApiKey(options: CreateNewApiKeyOptions): Promise<CreateNewApiKeyResult>
@@ -103,6 +105,7 @@ const api: ElectronAPI = {
   exportAccounts: (options) => ipcRenderer.invoke('export-accounts', options),
   deleteAccount: (id) => ipcRenderer.invoke('delete-account', id),
   deleteAccounts: (ids) => ipcRenderer.invoke('delete-accounts', ids),
+  addAccount: (input) => ipcRenderer.invoke('add-account', input),
   getRegistrationLogs: () => ipcRenderer.invoke('get-registration-logs'),
   clearRegistrationLogs: () => ipcRenderer.invoke('clear-registration-logs'),
   createNewApiKey: (options) => ipcRenderer.invoke('create-new-api-key', options),

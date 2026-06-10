@@ -141,6 +141,19 @@ export interface AccountRecord {
   metadata?: Record<string, unknown>
 }
 
+export interface AddAccountInput {
+  siteId: string
+  username: string
+  password: string
+  email?: string
+  browserProfileId?: string
+  proxyId?: string
+  apiKey?: string
+  apiKeyName?: string
+  apiKeyId?: number
+  notes?: string
+}
+
 export interface RegistrationLogRecord {
   id: string
   jobId: string

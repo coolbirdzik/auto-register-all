@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AccountRecord, SiteMeta } from '../../shared/contracts'
+import type { AccountRecord, BrowserProfile, ProxyConfig, SiteMeta } from '../../shared/contracts'
 import {
   Badge,
   Button,
@@ -12,37 +12,150 @@ import {
   EyeIcon,
   EyeOffIcon,
   Field,
+  Input,
+  PlusIcon,
   RefreshIcon,
   Select,
+  Textarea,
   TrashIcon,
   UsersIcon,
   XCircleIcon
 } from '../components/ui'
 
+interface ManualAccountForm {
+  siteId: string
+  username: string
+  password: string
+  email: string
+  browserProfileId: string
+  proxyId: string
+  apiKey: string
+  apiKeyName: string
+  apiKeyId: string
+  notes: string
+}
+
+const EMPTY_MANUAL_FORM: ManualAccountForm = {
+  siteId: '',
+  username: '',
+  password: '',
+  email: '',
+  browserProfileId: '',
+  proxyId: '',
+  apiKey: '',
+  apiKeyName: '',
+  apiKeyId: '',
+  notes: ''
+}
+
 export default function AccountsTab(): JSX.Element {
   const [accounts, setAccounts] = useState<AccountRecord[]>([])
   const [sites, setSites] = useState<SiteMeta[]>([])
+  const [browserProfiles, setBrowserProfiles] = useState<BrowserProfile[]>([])
+  const [proxies, setProxies] = useState<ProxyConfig[]>([])
   const [filterSite, setFilterSite] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [revealed, setRevealed] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [manualForm, setManualForm] = useState<ManualAccountForm>(EMPTY_MANUAL_FORM)
+  const [manualError, setManualError] = useState('')
+  const [manualSaving, setManualSaving] = useState(false)
 
   useEffect(() => {
     void load()
   }, [filterSite, filterStatus])
 
   async function load(): Promise<void> {
-    const [accs, siteList] = await Promise.all([
+    const [accs, siteList, profiles, proxyList] = await Promise.all([
       window.electronAPI.getAccounts({
         siteId: filterSite || undefined,
         status: (filterStatus as 'success' | 'failed') || undefined
       }),
-      window.electronAPI.listSites()
+      window.electronAPI.listSites(),
+      window.electronAPI.listBrowserProfiles(),
+      window.electronAPI.listProxies()
     ])
     setAccounts(accs.reverse())
     setSelected(new Set())
     setSites(siteList)
+    setBrowserProfiles(profiles)
+    setProxies(proxyList)
+  }
+
+  function openAddModal(): void {
+    setManualForm({
+      ...EMPTY_MANUAL_FORM,
+      siteId: filterSite || sites[0]?.id || ''
+    })
+    setManualError('')
+    setShowAddModal(true)
+  }
+
+  function closeAddModal(): void {
+    if (manualSaving) return
+    setShowAddModal(false)
+    setManualError('')
+  }
+
+  function updateManualForm<K extends keyof ManualAccountForm>(
+    key: K,
+    value: ManualAccountForm[K]
+  ): void {
+    setManualForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function handleManualSubmit(): Promise<void> {
+    const siteId = manualForm.siteId.trim()
+    const username = manualForm.username.trim()
+    const password = manualForm.password
+    if (!siteId) {
+      setManualError('Select a site')
+      return
+    }
+    if (!username) {
+      setManualError('Username is required')
+      return
+    }
+    if (!password) {
+      setManualError('Password is required')
+      return
+    }
+
+    let apiKeyId: number | undefined
+    const apiKeyIdRaw = manualForm.apiKeyId.trim()
+    if (apiKeyIdRaw) {
+      const parsed = Number(apiKeyIdRaw)
+      if (!Number.isFinite(parsed)) {
+        setManualError('API key id must be a number')
+        return
+      }
+      apiKeyId = parsed
+    }
+
+    setManualSaving(true)
+    setManualError('')
+    try {
+      await window.electronAPI.addAccount({
+        siteId,
+        username,
+        password,
+        email: manualForm.email.trim() || undefined,
+        browserProfileId: manualForm.browserProfileId || undefined,
+        proxyId: manualForm.proxyId || undefined,
+        apiKey: manualForm.apiKey.trim() || undefined,
+        apiKeyName: manualForm.apiKeyName.trim() || undefined,
+        apiKeyId,
+        notes: manualForm.notes.trim() || undefined
+      })
+      setShowAddModal(false)
+      await load()
+    } catch (err) {
+      setManualError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setManualSaving(false)
+    }
   }
 
   async function handleExport(successOnly = false): Promise<void> {
@@ -167,6 +280,9 @@ export default function AccountsTab(): JSX.Element {
         </Field>
         <div className="toolbar-spacer" />
         <div className="actions actions-inline">
+          <Button variant="primary" icon={<PlusIcon size={15} />} onClick={openAddModal}>
+            Add Account
+          </Button>
           <Button variant="secondary" icon={<DownloadIcon size={15} />} onClick={() => void handleExport(false)}>
             Export All
           </Button>
@@ -297,6 +413,149 @@ export default function AccountsTab(): JSX.Element {
             </table>
           </div>
         </Card>
+      )}
+
+      {showAddModal && (
+        <div className="modal-backdrop" onClick={closeAddModal}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-account-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 id="add-account-title" className="modal-title">
+                Add Account Manually
+              </h2>
+              <p className="modal-subtitle">
+                Save existing credentials so you can create API keys and pull quota for them.
+              </p>
+            </div>
+            <div className="modal-body">
+              <div className="form-row">
+                <Field label="Site" className="grow">
+                  <Select
+                    value={manualForm.siteId}
+                    onChange={(e) => updateManualForm('siteId', e.target.value)}
+                  >
+                    <option value="">Select a site</option>
+                    {sites.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Email" className="grow">
+                  <Input
+                    type="text"
+                    value={manualForm.email}
+                    onChange={(e) => updateManualForm('email', e.target.value)}
+                    placeholder="user@example.com"
+                  />
+                </Field>
+              </div>
+              <div className="form-row">
+                <Field label="Username" className="grow">
+                  <Input
+                    type="text"
+                    value={manualForm.username}
+                    onChange={(e) => updateManualForm('username', e.target.value)}
+                    placeholder="login username"
+                  />
+                </Field>
+                <Field label="Password" className="grow">
+                  <Input
+                    type="text"
+                    value={manualForm.password}
+                    onChange={(e) => updateManualForm('password', e.target.value)}
+                    placeholder="login password"
+                  />
+                </Field>
+              </div>
+              <div className="form-row">
+                <Field
+                  label="Browser Profile"
+                  className="grow"
+                  hint="Required to create API keys or fetch quota for this account."
+                >
+                  <Select
+                    value={manualForm.browserProfileId}
+                    onChange={(e) => updateManualForm('browserProfileId', e.target.value)}
+                  >
+                    <option value="">None</option>
+                    {browserProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Proxy" className="grow">
+                  <Select
+                    value={manualForm.proxyId}
+                    onChange={(e) => updateManualForm('proxyId', e.target.value)}
+                  >
+                    <option value="">Direct (no proxy)</option>
+                    {proxies.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+              <div className="form-row">
+                <Field label="API Key (optional)" className="grow">
+                  <Input
+                    type="text"
+                    value={manualForm.apiKey}
+                    onChange={(e) => updateManualForm('apiKey', e.target.value)}
+                    placeholder="sk-..."
+                  />
+                </Field>
+                <Field label="API Key Name" className="grow">
+                  <Input
+                    type="text"
+                    value={manualForm.apiKeyName}
+                    onChange={(e) => updateManualForm('apiKeyName', e.target.value)}
+                    placeholder="key label"
+                  />
+                </Field>
+                <Field label="API Key Id">
+                  <Input
+                    type="number"
+                    value={manualForm.apiKeyId}
+                    onChange={(e) => updateManualForm('apiKeyId', e.target.value)}
+                    placeholder="numeric id"
+                  />
+                </Field>
+              </div>
+              <Field label="Notes (optional)">
+                <Textarea
+                  rows={2}
+                  value={manualForm.notes}
+                  onChange={(e) => updateManualForm('notes', e.target.value)}
+                  placeholder="Where this account came from, anything else worth remembering."
+                />
+              </Field>
+              {manualError && <div className="field-error">{manualError}</div>}
+            </div>
+            <div className="modal-actions">
+              <Button variant="ghost" onClick={closeAddModal} disabled={manualSaving}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                loading={manualSaving}
+                onClick={() => void handleManualSubmit()}
+              >
+                Save Account
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

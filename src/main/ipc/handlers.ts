@@ -2,6 +2,8 @@ import { app, dialog, ipcMain, BrowserWindow, shell } from 'electron'
 import { writeFile } from 'fs/promises'
 import { v4 as uuidv4 } from 'uuid'
 import type {
+  AccountRecord,
+  AddAccountInput,
   AppSettings,
   AppUpdateInfo,
   AppUpdateState,
@@ -525,6 +527,67 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle('delete-account', (_e, id: string) => accountStore.delete(id))
 
   ipcMain.handle('delete-accounts', (_e, ids: string[]) => accountStore.deleteMany(ids))
+
+  ipcMain.handle('add-account', async (_e, input: AddAccountInput): Promise<AccountRecord> => {
+    if (!input || typeof input !== 'object') {
+      throw new Error('Account input is required')
+    }
+    const siteId = String(input.siteId ?? '').trim()
+    const username = String(input.username ?? '').trim()
+    const password = String(input.password ?? '')
+    const email = String(input.email ?? '').trim()
+    if (!siteId) throw new Error('Site is required')
+    if (!username) throw new Error('Username is required')
+    if (!password) throw new Error('Password is required')
+
+    let siteName = siteId
+    try {
+      siteName = registry.getSite(siteId).name
+    } catch {
+      // Fall back to the raw id if the provider is no longer registered.
+    }
+
+    if (input.browserProfileId) {
+      const profile = browserPool.listProfiles().find((p) => p.id === input.browserProfileId)
+      if (!profile) throw new Error(`Browser profile not found: ${input.browserProfileId}`)
+    }
+
+    if (input.proxyId) {
+      const proxy = proxyManager.get(input.proxyId)
+      if (!proxy) throw new Error(`Proxy not found: ${input.proxyId}`)
+    }
+
+    const apiKey = input.apiKey ? String(input.apiKey).trim() : undefined
+    const apiKeyName = input.apiKeyName ? String(input.apiKeyName).trim() : undefined
+    const apiKeyId =
+      typeof input.apiKeyId === 'number' && Number.isFinite(input.apiKeyId)
+        ? input.apiKeyId
+        : undefined
+
+    const record: AccountRecord = {
+      id: uuidv4(),
+      siteId,
+      siteName,
+      username,
+      password,
+      email,
+      registeredAt: new Date().toISOString(),
+      status: 'success',
+      browserProfileId: input.browserProfileId || undefined,
+      proxyId: input.proxyId || undefined,
+      apiKey,
+      apiKeyName,
+      apiKeyId,
+      apiKeyCreatedAt: apiKey ? new Date().toISOString() : undefined,
+      metadata: {
+        source: 'manual',
+        ...(input.notes ? { notes: input.notes } : {})
+      }
+    }
+
+    await accountStore.append(record)
+    return record
+  })
 
   ipcMain.handle('get-registration-logs', () => registrationLogStore.list())
 

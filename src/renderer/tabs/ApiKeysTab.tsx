@@ -10,10 +10,13 @@ import {
   EmptyState,
   Field,
   Input,
+  KeyIcon,
   PlayIcon,
   RefreshIcon,
   Select,
-  ServerIcon
+  ServerIcon,
+  TrendUpIcon,
+  WalletIcon
 } from '../components/ui'
 
 const WEILAI_DEFAULT_GROUPS: ApiKeyGroupOption[] = [
@@ -415,12 +418,125 @@ export default function ApiKeysTab(): JSX.Element {
     return sites.find((site) => site.id === siteId)?.name ?? siteId
   }
 
+  const totalKeys = accounts.filter((a) => a.apiKey).length
+  const accountsWithBalance = accounts.filter((a) => a.apiBalance != null)
+  const totalBalance = accountsWithBalance.reduce((sum, a) => sum + (a.apiBalance ?? 0), 0)
+  const totalUsed = accounts.filter((a) => a.apiUsedQuota != null).reduce((sum, a) => sum + (a.apiUsedQuota ?? 0), 0)
+
+  // Per-site breakdown
+  const siteStats = sites.map((site) => {
+    const siteAccounts = accounts.filter((a) => a.siteId === site.id)
+    const siteKeys = siteAccounts.filter((a) => a.apiKey).length
+    const siteBalance = siteAccounts.filter((a) => a.apiBalance != null).reduce((sum, a) => sum + (a.apiBalance ?? 0), 0)
+    const siteBalanceFetched = siteAccounts.some((a) => a.apiBalance != null)
+    return { site, total: siteAccounts.length, keys: siteKeys, balance: siteBalance, balanceFetched: siteBalanceFetched }
+  }).filter((s) => s.total > 0)
+
   return (
     <>
       <header className="page-header">
         <h1 className="page-title">API Keys</h1>
         <p className="page-subtitle">Create New API keys for registered site accounts and save them back to Accounts.</p>
       </header>
+
+      {accounts.length > 0 && (
+        <>
+          <div className="stats">
+            <div className="stat-card">
+              <div className="stat-icon neutral">
+                <KeyIcon size={20} />
+              </div>
+              <div>
+                <div className="stat-value">{totalKeys}</div>
+                <div className="stat-label">API Keys Created</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon success">
+                <WalletIcon size={20} />
+              </div>
+              <div>
+                <div className="stat-value">${totalBalance.toFixed(2)}</div>
+                <div className="stat-label">Total Balance{accountsWithBalance.length > 0 ? ` (${accountsWithBalance.length} fetched)` : ''}</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon danger">
+                <TrendUpIcon size={20} />
+              </div>
+              <div>
+                <div className="stat-value">${totalUsed.toFixed(2)}</div>
+                <div className="stat-label">Total Used Quota</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon neutral">
+                <ServerIcon size={20} />
+              </div>
+              <div>
+                <div className="stat-value">{accounts.length}</div>
+                <div className="stat-label">Total Accounts</div>
+              </div>
+            </div>
+          </div>
+
+          {siteStats.length > 1 && (
+            <Card title="Per-Site Breakdown" icon={<TrendUpIcon size={18} />}>
+              <div className="table-scroll" style={{ maxHeight: 'none' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Site</th>
+                      <th>Accounts</th>
+                      <th>Keys Created</th>
+                      <th>Coverage</th>
+                      <th>Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {siteStats.map(({ site, total, keys, balance, balanceFetched }) => (
+                      <tr key={site.id}>
+                        <td>{site.name}</td>
+                        <td>{total}</td>
+                        <td>{keys}</td>
+                        <td>
+                          <div className="stack">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{
+                                flex: 1,
+                                height: 6,
+                                borderRadius: 999,
+                                background: 'var(--surface-3)',
+                                overflow: 'hidden',
+                                minWidth: 60
+                              }}>
+                                <div style={{
+                                  height: '100%',
+                                  width: `${total > 0 ? Math.round((keys / total) * 100) : 0}%`,
+                                  background: 'var(--accent)',
+                                  borderRadius: 999
+                                }} />
+                              </div>
+                              <span className="cell-secondary">{total > 0 ? Math.round((keys / total) * 100) : 0}%</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          {balanceFetched ? (
+                            <span>${balance.toFixed(4)}</span>
+                          ) : (
+                            <span className="cell-secondary">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </>
+      )}
 
       {accounts.length === 0 ? (
         <Card flush>

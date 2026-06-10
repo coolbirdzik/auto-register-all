@@ -226,3 +226,32 @@ export function InboxIcon(props: IconProps): JSX.Element {
     </Icon>
   )
 }
+
+export function TrendUpIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </Icon>
+  )
+}
+
+export function WalletIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
+      <path d="M4 6v12c0 1.1.9 2 2 2h14v-4" />
+      <path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z" />
+    </Icon>
+  )
+}
+
+export function KeyIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="M21 2l-9.6 9.6" />
+      <path d="M15.5 7.5l3 3L22 7l-3-3" />
+    </Icon>
+  )
+}

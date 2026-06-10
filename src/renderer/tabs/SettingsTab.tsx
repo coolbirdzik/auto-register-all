@@ -97,65 +97,22 @@ export default function SettingsTab(): JSX.Element {
 
   return (
     <>
-      <header className="page-header">
-        <h1 className="page-title">Settings</h1>
-        <p className="page-subtitle">Configure providers, sites, and default job behavior.</p>
+      <header className="page-header page-header-split">
+        <div className="page-header-meta">
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">Configure providers, sites, and default job behavior.</p>
+        </div>
+        <Button
+          variant="primary"
+          icon={saved ? <CheckIcon size={16} /> : undefined}
+          onClick={() => void handleSave()}
+        >
+          {saved ? 'Saved!' : 'Save Settings'}
+        </Button>
       </header>
 
-      {emails.map((email) => (
-        <Card
-          title={email.name}
-          subtitle="Email provider"
-          icon={<InboxIcon size={18} />}
-          key={email.id}
-          actions={
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={testingId === email.id}
-              onClick={() => void handleTestEmail(email.id)}
-            >
-              Test Connection
-            </Button>
-          }
-        >
-          <div className="form-grid">
-            <ConfigForm
-              schema={email.configSchema}
-              values={settings.emailProviders[email.id] ?? {}}
-              onChange={(key, value) => updateEmailConfig(email.id, key, value)}
-            />
-          </div>
-        </Card>
-      ))}
-
-      {testResult && (
-        <div className={`notice ${noticeTone}`}>
-          {isTesting ? (
-            <Spinner size={15} />
-          ) : isSuccess ? (
-            <CheckCircleIcon size={16} />
-          ) : (
-            <AlertTriangleIcon size={16} />
-          )}
-          <span>{testResult}</span>
-        </div>
-      )}
-
-      {sites.map((site) => (
-        <Card title={site.name} subtitle="Target site" icon={<GlobeIcon size={18} />} key={site.id}>
-          <div className="form-grid">
-            <ConfigForm
-              schema={site.configSchema}
-              values={settings.siteConfigs[site.id] ?? {}}
-              onChange={(key, value) => updateSiteConfig(site.id, key, value)}
-            />
-          </div>
-        </Card>
-      ))}
-
-      <Card title="Default Job Options" icon={<SettingsIcon size={18} />}>
-        <div className="form-grid">
+      <Card title="Default Job Options" icon={<SettingsIcon size={18} />} className="settings-primary-card">
+        <div className="form-grid settings-compact-grid">
           <Field label="Default Site">
             <Select
               value={settings.defaults.siteId}
@@ -249,15 +206,86 @@ export default function SettingsTab(): JSX.Element {
         </div>
       </Card>
 
-      <div className="actions">
-        <Button
-          variant="primary"
-          icon={saved ? <CheckIcon size={16} /> : undefined}
-          onClick={() => void handleSave()}
-        >
-          {saved ? 'Saved!' : 'Save Settings'}
-        </Button>
-      </div>
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <div>
+            <h2 className="settings-section-title">Email Providers</h2>
+            <p className="settings-section-subtitle">Inbox sources, API keys, and mailbox behavior.</p>
+          </div>
+        </div>
+
+        {testResult && (
+          <div className={`notice ${noticeTone}`}>
+            {isTesting ? (
+              <Spinner size={15} />
+            ) : isSuccess ? (
+              <CheckCircleIcon size={16} />
+            ) : (
+              <AlertTriangleIcon size={16} />
+            )}
+            <span>{testResult}</span>
+          </div>
+        )}
+
+        <div className="settings-grid">
+          {emails.map((email) => (
+            <Card
+              title={email.name}
+              subtitle="Email provider"
+              icon={<InboxIcon size={18} />}
+              key={email.id}
+              className="settings-card"
+              actions={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={testingId === email.id}
+                  onClick={() => void handleTestEmail(email.id)}
+                >
+                  Test Connection
+                </Button>
+              }
+            >
+              <div className="form-grid settings-compact-grid">
+                <ConfigForm
+                  schema={email.configSchema}
+                  values={settings.emailProviders[email.id] ?? {}}
+                  onChange={(key, value) => updateEmailConfig(email.id, key, value)}
+                />
+              </div>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <div>
+            <h2 className="settings-section-title">Target Sites</h2>
+            <p className="settings-section-subtitle">Base URLs, login paths, delays, and site-specific defaults.</p>
+          </div>
+        </div>
+
+        <div className="settings-grid">
+          {sites.map((site) => (
+            <Card
+              title={site.name}
+              subtitle="Target site"
+              icon={<GlobeIcon size={18} />}
+              key={site.id}
+              className="settings-card"
+            >
+              <div className="form-grid settings-compact-grid">
+                <ConfigForm
+                  schema={site.configSchema}
+                  values={settings.siteConfigs[site.id] ?? {}}
+                  onChange={(key, value) => updateSiteConfig(site.id, key, value)}
+                />
+              </div>
+            </Card>
+          ))}
+        </div>
+      </section>
     </>
   )
 }

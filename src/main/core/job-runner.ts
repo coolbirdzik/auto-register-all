@@ -334,7 +334,8 @@ export class JobRunner {
       status: result.success ? 'success' : 'failed',
       browserProfileId,
       proxyId,
-      error: result.error
+      error: result.error,
+      metadata: result.metadata
     }
     await this.accountStore.append(record)
     return record

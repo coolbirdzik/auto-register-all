@@ -18,7 +18,7 @@ const VISIBLE_INITIAL_INBOX_WAIT_MS = 2500
 const VISIBLE_INBOX_POLL_INTERVAL_MS = 3000
 const MAX_INBOX_POLLS = 3
 const VISIBLE_MAX_INBOX_POLLS = 20
-const DEFAULT_EMAIL_TYPES = ['plusGmail', 'dotGmail', 'googleMail']
+const DEFAULT_EMAIL_TYPES = ['domain', 'plusGmail', 'dotGmail', 'googleMail']
 const ALLOWED_EMAIL_TYPES = new Set(DEFAULT_EMAIL_TYPES)
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -48,6 +48,16 @@ function splitTypes(value: unknown): string[] {
   return types.length > 0 ? types : DEFAULT_EMAIL_TYPES
 }
 
+function getEmailTypes(config: Record<string, unknown>): string[] {
+  const keys = DEFAULT_EMAIL_TYPES
+  const hasBooleanFlags = keys.some((key) => typeof config[key] === 'boolean')
+  if (hasBooleanFlags) {
+    const selected = keys.filter((key) => Boolean(config[key]))
+    return selected.length > 0 ? selected : DEFAULT_EMAIL_TYPES
+  }
+  return splitTypes(config.emailTypes)
+}
+
 function matchesFilter(item: EmailnatorMessageListItem, filter: MessageFilter): boolean {
   if (filter.subjectIncludes && !item.subject.toLowerCase().includes(filter.subjectIncludes.toLowerCase())) {
     return false
@@ -71,11 +81,29 @@ export class EmailnatorProvider implements EmailProvider {
   getConfigSchema(): ConfigField[] {
     return [
       {
-        key: 'emailTypes',
-        label: 'Gmail Types',
-        type: 'text',
-        default: DEFAULT_EMAIL_TYPES.join(', ')
-      }
+        key: 'domain',
+        label: 'Domain',
+        type: 'boolean',
+        default: true
+      },
+      {
+        key: 'plusGmail',
+        label: '+Gmail',
+        type: 'boolean',
+        default: true
+      },
+      {
+        key: 'dotGmail',
+        label: '.Gmail',
+        type: 'boolean',
+        default: true
+      },
+      {
+        key: 'googleMail',
+        label: 'GoogleMail',
+        type: 'boolean',
+        default: true
+      },
     ]
   }
 
@@ -85,7 +113,7 @@ export class EmailnatorProvider implements EmailProvider {
 
   async createInbox(ctx: JobContext, _options?: CreateInboxOptions): Promise<Inbox> {
     const config = ctx.settings.emailProviders.emailnator ?? {}
-    const emailTypes = splitTypes(config.emailTypes)
+    const emailTypes = getEmailTypes(config)
     const email = await this.client.generate(ctx, emailTypes)
 
     return {

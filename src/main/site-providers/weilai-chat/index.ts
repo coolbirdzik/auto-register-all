@@ -91,6 +91,8 @@ export class WeiLaiChatProvider implements SiteProvider {
     const browser = ctx.browser
 
     try {
+      ctx.log('info', 'Clearing WeiLai browser profile before registration...')
+      await browser.clearStorage()
       ctx.log('info', 'Loading registration page...')
       await browser.navigate(registerUrl)
       ctx.log('info', 'Registration page DOM ready')
@@ -160,7 +162,8 @@ export class WeiLaiChatProvider implements SiteProvider {
       if (!otpReady) {
         const earlyOutcome = await this.detectOutcome(ctx, registerUrl, 5000)
         if (earlyOutcome.success) {
-          return { success: true, credentials: { username, email: inbox.address, password } }
+          const metadata = await this.buildSuccessMetadata(ctx, baseUrl)
+          return { success: true, credentials: { username, email: inbox.address, password }, metadata }
         }
         return { success: false, error: earlyOutcome.error ?? 'otp_form_not_found' }
       }
@@ -194,7 +197,8 @@ export class WeiLaiChatProvider implements SiteProvider {
       }
 
       ctx.log('info', 'Registration successful')
-      return { success: true, credentials: { username, email: inbox.address, password } }
+      const metadata = await this.buildSuccessMetadata(ctx, baseUrl)
+      return { success: true, credentials: { username, email: inbox.address, password }, metadata }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       ctx.log('error', error)
@@ -234,6 +238,35 @@ export class WeiLaiChatProvider implements SiteProvider {
 
   private buildRegisterUrl(baseUrl: string, registerPath: string): string {
     return new URL(registerPath || DEFAULT_REGISTER_PATH, baseUrl).toString()
+  }
+
+  private async buildSuccessMetadata(ctx: JobContext, baseUrl: string): Promise<Record<string, unknown>> {
+    const origin = new URL(baseUrl).origin
+    const [cookies, authToken] = await Promise.all([
+      ctx.browser.getCookies(origin),
+      ctx.browser
+        .executeScript<string | null>(`(() => {
+          const keys = ['token', 'auth_token', 'access_token', 'weilai_token', 'weilai_temp_token'];
+          for (const storage of [localStorage, sessionStorage]) {
+            for (const key of keys) {
+              const value = storage.getItem(key);
+              if (value) return value;
+            }
+          }
+          return null;
+        })()`)
+        .catch(() => null)
+    ])
+
+    ctx.log('info', `Saved WeiLai session snapshot (${cookies.length} cookies${authToken ? ', auth token' : ''})`)
+    return {
+      weilaiSession: {
+        origin,
+        cookies,
+        authToken,
+        capturedAt: new Date().toISOString()
+      }
+    }
   }
 
   private async getVerificationCode(

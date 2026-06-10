@@ -137,6 +137,7 @@ export interface AccountRecord {
   apiBalanceLabel?: string
   apiBalanceFetchedAt?: string
   error?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface RegistrationLogRecord {
@@ -242,6 +243,7 @@ export interface AppSettings {
   migrations?: {
     emailnatorDefaultApplied?: boolean
     weilaiChatTargetApplied?: boolean
+    aiRouterTargetApplied?: boolean
   }
   siteConfigs: Record<string, Record<string, unknown>>
   targetSites: TargetSiteConfig[]

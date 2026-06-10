@@ -4,7 +4,10 @@ import type { AppSettings, BrowserProfile } from '../shared/contracts'
 const DEFAULT_SETTINGS: AppSettings = {
   emailProviders: {
     emailnator: {
-      emailTypes: 'plusGmail, dotGmail, googleMail'
+      domain: false,
+      plusGmail: true,
+      dotGmail: true,
+      googleMail: false
     }
   },
   proxyProviders: {
@@ -27,6 +30,14 @@ const DEFAULT_SETTINGS: AppSettings = {
       registerPath: '/register',
       passwordLength: 16,
       interStepDelayMs: 800
+    },
+    'ai-router': {
+      baseUrl: 'https://ai-router.dev',
+      apiBaseUrl: 'https://api.ai-router.dev/api/v1',
+      registerPath: '/register',
+      loginPath: '/login',
+      passwordLength: 16,
+      interStepDelayMs: 800
     }
   },
   targetSites: [
@@ -43,6 +54,14 @@ const DEFAULT_SETTINGS: AppSettings = {
       label: 'WeiLai.Chat Default',
       providerId: 'weilai-chat',
       startUrl: 'https://api.weilai.chat/register',
+      enabled: true,
+      createdAt: new Date(0).toISOString()
+    },
+    {
+      id: 'ai-router-default',
+      label: 'AI-ROUTER Default',
+      providerId: 'ai-router',
+      startUrl: 'https://ai-router.dev/register',
       enabled: true,
       createdAt: new Date(0).toISOString()
     }
@@ -74,6 +93,7 @@ export class SettingsStore {
     this.migrateDefaultConcurrency()
     this.migrateDefaultEmailProvider()
     this.migrateWeiLaiChatTarget()
+    this.migrateAiRouterTarget()
     this.removeUnsupportedProxies()
   }
 
@@ -109,6 +129,21 @@ export class SettingsStore {
     this.store.set('migrations.weilaiChatTargetApplied', true)
   }
 
+  private migrateAiRouterTarget(): void {
+    if (this.store.store.migrations?.aiRouterTargetApplied) return
+
+    const targetSites = this.store.store.targetSites ?? []
+    if (!targetSites.some((target) => target.id === 'ai-router-default')) {
+      this.store.set('targetSites', [...targetSites, DEFAULT_SETTINGS.targetSites[2]])
+    }
+
+    this.store.set('siteConfigs.ai-router', {
+      ...DEFAULT_SETTINGS.siteConfigs['ai-router'],
+      ...(this.store.store.siteConfigs?.['ai-router'] ?? {})
+    })
+    this.store.set('migrations.aiRouterTargetApplied', true)
+  }
+
   private removeUnsupportedProxies(): void {
     const proxies = this.store.store.proxies ?? []
     const supported = proxies.filter((proxy) => proxy.type !== 'socks5')
@@ -118,13 +153,36 @@ export class SettingsStore {
   }
 
   private mergeEmailProviders(settings: AppSettings): AppSettings['emailProviders'] {
+    const rawEmailnator = {
+      ...(DEFAULT_SETTINGS.emailProviders.emailnator ?? {}),
+      ...(settings.emailProviders.emailnator ?? {})
+    }
+    const legacyEmailTypes = String(settings.emailProviders.emailnator?.emailTypes ?? '').trim()
+    const legacyParts = legacyEmailTypes
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+    const hasBooleanFlags = ['domain', 'plusGmail', 'dotGmail', 'googleMail'].some(
+      (key) => typeof rawEmailnator[key] === 'boolean'
+    )
+    const normalizedEmailnator = hasBooleanFlags
+      ? {
+          domain: Boolean(rawEmailnator.domain),
+          plusGmail: Boolean(rawEmailnator.plusGmail),
+          dotGmail: Boolean(rawEmailnator.dotGmail),
+          googleMail: Boolean(rawEmailnator.googleMail)
+        }
+      : {
+          domain: legacyParts.includes('domain') || legacyParts.length === 0,
+          plusGmail: legacyParts.includes('plusGmail') || legacyParts.length === 0,
+          dotGmail: legacyParts.includes('dotGmail') || legacyParts.length === 0,
+          googleMail: legacyParts.includes('googleMail') || legacyParts.length === 0
+        }
+
     return {
       ...DEFAULT_SETTINGS.emailProviders,
       ...settings.emailProviders,
-      emailnator: {
-        ...(DEFAULT_SETTINGS.emailProviders.emailnator ?? {}),
-        ...(settings.emailProviders.emailnator ?? {})
-      }
+      emailnator: normalizedEmailnator
     }
   }
 
@@ -155,6 +213,10 @@ export class SettingsStore {
           'weilai-chat': {
             ...DEFAULT_SETTINGS.siteConfigs['weilai-chat'],
             ...(settings.siteConfigs['weilai-chat'] ?? {})
+          },
+          'ai-router': {
+            ...DEFAULT_SETTINGS.siteConfigs['ai-router'],
+            ...(settings.siteConfigs['ai-router'] ?? {})
           }
         },
         proxyProviders: {
@@ -195,6 +257,10 @@ export class SettingsStore {
         'weilai-chat': {
           ...DEFAULT_SETTINGS.siteConfigs['weilai-chat'],
           ...(settings.siteConfigs['weilai-chat'] ?? {})
+        },
+        'ai-router': {
+          ...DEFAULT_SETTINGS.siteConfigs['ai-router'],
+          ...(settings.siteConfigs['ai-router'] ?? {})
         }
       }
     }

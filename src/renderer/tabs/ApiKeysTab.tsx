@@ -51,7 +51,9 @@ export default function ApiKeysTab(): JSX.Element {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [balanceRunningId, setBalanceRunningId] = useState<string | null>(null)
 
-  const supportedSiteIds = new Set(['tokenlb', 'weilai-chat'])
+  const supportedSiteIds = new Set(['tokenlb', 'weilai-chat', 'ai-router'])
+  const managedGroupSiteIds = new Set(['weilai-chat', 'ai-router'])
+  const balanceSupportedSiteIds = new Set(['weilai-chat', 'ai-router'])
 
   useEffect(() => {
     void load()
@@ -73,13 +75,18 @@ export default function ApiKeysTab(): JSX.Element {
 
   async function loadGroupOptions(targetAccountId: string): Promise<void> {
     if (!targetAccountId) return
+    const targetAccount = accounts.find((account) => account.id === targetAccountId)
+    if (targetAccount && !managedGroupSiteIds.has(targetAccount.siteId)) {
+      setGroupOptions([])
+      return
+    }
     setGroupsLoading(true)
     try {
       const groups = await window.electronAPI.listApiKeyGroups({ accountId: targetAccountId })
       setGroupOptions(groups)
       setGroup((current) => {
         if (current && groups.some((item) => String(item.id) === current)) return current
-        return String(groups.find((item) => item.name === 'team')?.id ?? groups[0]?.id ?? 22)
+        return String(groups.find((item) => item.name === 'team')?.id ?? groups[0]?.id ?? '')
       })
     } catch (err) {
       setGroupOptions([])
@@ -183,7 +190,7 @@ export default function ApiKeysTab(): JSX.Element {
   async function handleUpdateGroup(targetAccountId = accountId): Promise<void> {
     const groupId = Number(group)
     if (!targetAccountId || !Number.isFinite(groupId) || groupId < 1) {
-      setError('Select a valid WeiLai group')
+      setError('Select a valid group')
       return
     }
 
@@ -206,16 +213,18 @@ export default function ApiKeysTab(): JSX.Element {
   async function handleBulkUpdateGroup(): Promise<void> {
     const groupId = Number(group)
     if (!Number.isFinite(groupId) || groupId < 1) {
-      setError('Select a valid WeiLai group')
+      setError('Select a valid group')
       return
     }
 
-    const targets = filteredAccounts.filter((account) => account.siteId === 'weilai-chat' && account.apiKey && account.apiKeyId)
+    const targets = filteredAccounts.filter(
+      (account) => managedGroupSiteIds.has(account.siteId) && account.apiKey && account.apiKeyId
+    )
     if (targets.length === 0) {
-      setMessage('No WeiLai keys to update in the current filter.')
+      setMessage('No supported API keys to update in the current filter.')
       return
     }
-    if (!confirm(`Update group for ${targets.length} WeiLai API key(s)?`)) return
+    if (!confirm(`Update group for ${targets.length} API key(s)?`)) return
 
     setBulkGroupRunning(true)
     setError('')
@@ -237,7 +246,7 @@ export default function ApiKeysTab(): JSX.Element {
           failures.push(`${accountLabel}: ${String(err)}`)
         }
       }
-      setMessage(`Updated group for ${success}/${targets.length} WeiLai API key(s).`)
+      setMessage(`Updated group for ${success}/${targets.length} API key(s).`)
       if (failures.length > 0) setError(failures.slice(0, 3).join('\n'))
     } finally {
       setBulkGroupRunning(false)
@@ -300,16 +309,27 @@ export default function ApiKeysTab(): JSX.Element {
 
   const selectedAccount = accounts.find((account) => account.id === accountId)
   const filteredAccounts = accounts.filter((account) => !siteFilter || account.siteId === siteFilter)
-  const weilaiGroupOptions = groupOptions.length > 0 ? groupOptions : WEILAI_DEFAULT_GROUPS
+  const groupSelectOptions =
+    selectedAccount?.siteId === 'weilai-chat'
+      ? groupOptions.length > 0
+        ? groupOptions
+        : WEILAI_DEFAULT_GROUPS
+      : groupOptions
+  const selectedAccountSupportsManagedGroups = selectedAccount ? managedGroupSiteIds.has(selectedAccount.siteId) : false
+  const selectedAccountSupportsBalance = selectedAccount ? balanceSupportedSiteIds.has(selectedAccount.siteId) : false
 
   useEffect(() => {
-    if (selectedAccount?.siteId === 'weilai-chat') {
-      setGroup(selectedAccount.apiKeyGroupId ? String(selectedAccount.apiKeyGroupId) : group || '22')
+    if (selectedAccount && managedGroupSiteIds.has(selectedAccount.siteId)) {
+      setGroup((current) => {
+        if (selectedAccount.apiKeyGroupId) return String(selectedAccount.apiKeyGroupId)
+        if (current) return current
+        return selectedAccount.siteId === 'weilai-chat' ? '22' : ''
+      })
       void loadGroupOptions(selectedAccount.id)
     } else {
       setGroupOptions([])
     }
-  }, [selectedAccount?.id, selectedAccount?.siteId])
+  }, [selectedAccount?.id, selectedAccount?.siteId, accounts])
 
   function getSiteName(siteId: string): string {
     return sites.find((site) => site.id === siteId)?.name ?? siteId
@@ -327,7 +347,7 @@ export default function ApiKeysTab(): JSX.Element {
           <EmptyState
             icon={<ServerIcon size={26} />}
             title="No supported site accounts"
-            description="Register a TokenLB or WeiLai account first, then create an API key from this tab."
+            description="Register a TokenLB, WeiLai, or AI-ROUTER account first, then create an API key from this tab."
           />
         </Card>
       ) : (
@@ -375,10 +395,19 @@ export default function ApiKeysTab(): JSX.Element {
               <Field label="Expired Time">
                 <Input type="number" value={expiredTime} onChange={(e) => setExpiredTime(Number(e.target.value))} />
               </Field>
-              <Field label="Group / Group ID" hint="WeiLai updates existing keys with PUT /api/v1/keys/{id}; it does not create a new key.">
-                {selectedAccount?.siteId === 'weilai-chat' ? (
+              <Field
+                label="Group / Group ID"
+                hint={
+                  selectedAccount?.siteId === 'weilai-chat'
+                    ? 'WeiLai updates existing keys with PUT /api/v1/keys/{id}; it does not create a new key.'
+                    : selectedAccount?.siteId === 'ai-router'
+                      ? 'AI-ROUTER creates new keys with POST /keys and updates groups with PUT /keys/{id}.'
+                      : undefined
+                }
+              >
+                {selectedAccountSupportsManagedGroups && groupSelectOptions.length > 0 ? (
                   <Select value={group} onChange={(e) => setGroup(e.target.value)}>
-                    {weilaiGroupOptions.map((option) => (
+                    {groupSelectOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name} - {option.platform} - {option.rateMultiplier}x
                       </option>
@@ -387,7 +416,7 @@ export default function ApiKeysTab(): JSX.Element {
                 ) : (
                   <Input value={group} placeholder="22" onChange={(e) => setGroup(e.target.value)} />
                 )}
-                {groupsLoading && <p className="input-hint">Loading WeiLai groups...</p>}
+                {groupsLoading && <p className="input-hint">Loading groups...</p>}
               </Field>
               <Field label="Allow IPs">
                 <Input value={allowIps} placeholder="comma separated" onChange={(e) => setAllowIps(e.target.value)} />
@@ -461,7 +490,7 @@ export default function ApiKeysTab(): JSX.Element {
               <Button
                 variant="secondary"
                 loading={groupRunning}
-                disabled={!selectedAccount?.apiKey || selectedAccount.siteId !== 'weilai-chat' || running || bulkRunning || bulkGroupRunning}
+                disabled={!selectedAccount?.apiKey || !selectedAccountSupportsManagedGroups || running || bulkRunning || bulkGroupRunning}
                 icon={<RefreshIcon size={15} />}
                 onClick={() => void handleUpdateGroup()}
               >
@@ -470,7 +499,12 @@ export default function ApiKeysTab(): JSX.Element {
               <Button
                 variant="secondary"
                 loading={bulkGroupRunning}
-                disabled={running || bulkRunning || groupRunning || filteredAccounts.every((account) => account.siteId !== 'weilai-chat' || !account.apiKey)}
+                disabled={
+                  running ||
+                  bulkRunning ||
+                  groupRunning ||
+                  filteredAccounts.every((account) => !managedGroupSiteIds.has(account.siteId) || !account.apiKey)
+                }
                 icon={<RefreshIcon size={15} />}
                 onClick={() => void handleBulkUpdateGroup()}
               >
@@ -541,7 +575,7 @@ export default function ApiKeysTab(): JSX.Element {
                           <Button
                             variant="ghost"
                             loading={balanceRunningId === account.id}
-                            disabled={!account.apiKey || account.siteId !== 'weilai-chat'}
+                            disabled={!account.apiKey || !balanceSupportedSiteIds.has(account.siteId)}
                             icon={<RefreshIcon size={15} />}
                             onClick={() => void handleGetBalance(account.id)}
                           >
@@ -550,7 +584,7 @@ export default function ApiKeysTab(): JSX.Element {
                           <Button
                             variant="ghost"
                             loading={groupRunning && accountId === account.id}
-                            disabled={!account.apiKey || account.siteId !== 'weilai-chat' || groupRunning || bulkGroupRunning}
+                            disabled={!account.apiKey || !managedGroupSiteIds.has(account.siteId) || groupRunning || bulkGroupRunning}
                             icon={<RefreshIcon size={15} />}
                             onClick={() => void handleUpdateGroup(account.id)}
                           >

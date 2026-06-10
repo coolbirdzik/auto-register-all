@@ -9,6 +9,7 @@ import { GmailnatorProvider } from './email-providers/gmailnator'
 import { registerIpcHandlers } from './ipc/handlers'
 import { ProxyManager } from './proxy/proxy-manager'
 import { SettingsStore } from './settings'
+import { AiRouterProvider } from './site-providers/ai-router'
 import { TokenLBProvider } from './site-providers/tokenlb'
 import { WeiLaiChatProvider } from './site-providers/weilai-chat'
 import { AccountStore } from './storage/account-store'
@@ -47,6 +48,7 @@ registry.registerEmail(new GmailnatorProvider(proxyManager))
 registry.registerEmail(new EmailnatorProvider(proxyManager))
 registry.registerSite(new TokenLBProvider(registry, proxyManager))
 registry.registerSite(new WeiLaiChatProvider(registry, proxyManager))
+registry.registerSite(new AiRouterProvider(registry, proxyManager))
 browserPool.setProfiles(settings.browsers)
 
 function broadcastProgress(event: JobProgressEvent): void {

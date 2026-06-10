@@ -1,5 +1,5 @@
 import { BrowserWindow, session as electronSession, type Cookie } from 'electron'
-import type { BrowserProfile, BrowserSession, ProxyConfig } from '../../shared/contracts'
+import type { BrowserCookieSnapshot, BrowserProfile, BrowserSession, ProxyConfig } from '../../shared/contracts'
 import type { ProxyManager } from '../proxy/proxy-manager'
 import { createBrowserProfile } from './browser-profile'
 
@@ -103,6 +103,39 @@ class ElectronBrowserSession implements BrowserSession {
       })
     `
     return this.window.webContents.executeJavaScript(script)
+  }
+
+  async clearStorage(): Promise<void> {
+    const ses = electronSession.fromPartition(this.partition)
+    await ses.clearStorageData()
+  }
+
+  async getCookies(url: string): Promise<BrowserCookieSnapshot[]> {
+    const ses = electronSession.fromPartition(this.partition)
+    const byUrl = await ses.cookies.get({ url })
+    const cookies = byUrl.length > 0 ? byUrl : await this.getDomainCookies(ses, url)
+    return cookies.map((cookie) => ({
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain,
+      path: cookie.path,
+      expires: cookie.expirationDate,
+      httpOnly: cookie.httpOnly,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite
+    }))
+  }
+
+  private async getDomainCookies(
+    ses: Electron.Session,
+    url: string
+  ): Promise<Cookie[]> {
+    const hostname = new URL(url).hostname
+    const all = await ses.cookies.get({})
+    return all.filter((cookie) => {
+      const domain = cookie.domain.replace(/^\./, '')
+      return hostname === domain || hostname.endsWith(`.${domain}`)
+    })
   }
 
   show(): void {

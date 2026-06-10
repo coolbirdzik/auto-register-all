@@ -192,6 +192,15 @@ export class BrowserPool {
     return profile
   }
 
+  private ensureProfile(profileId: string): BrowserProfile {
+    const existing = this.profiles.find((p) => p.id === profileId)
+    if (existing) return existing
+    return this.createProfile({
+      id: profileId,
+      label: `Recovered ${this.profiles.length + 1}`
+    })
+  }
+
   deleteProfile(profileId: string): void {
     const session = this.sessions.get(profileId)
     if (session) {
@@ -246,7 +255,7 @@ export class BrowserPool {
 
   async acquire(profileId?: string, proxy?: ProxyConfig, headless = true): Promise<BrowserSession> {
     const profile = profileId
-      ? this.profiles.find((p) => p.id === profileId)
+      ? this.ensureProfile(profileId)
       : this.pickAvailableProfile()
 
     if (!profile) {
@@ -326,8 +335,7 @@ export class BrowserPool {
   }
 
   async showProfile(profileId: string): Promise<void> {
-    const profile = this.profiles.find((p) => p.id === profileId)
-    if (!profile) throw new Error(`Profile not found: ${profileId}`)
+    const profile = this.ensureProfile(profileId)
     const proxy = this.resolveProxy(profile)
     let win = this.windows.get(profileId)
     if (!win || win.isDestroyed()) {
@@ -339,8 +347,7 @@ export class BrowserPool {
   }
 
   async getCookies(profileId: string, url: string): Promise<Cookie[]> {
-    const profile = this.profiles.find((p) => p.id === profileId)
-    if (!profile) throw new Error(`Profile not found: ${profileId}`)
+    const profile = this.ensureProfile(profileId)
     const ses = electronSession.fromPartition(profile.partition)
     const byUrl = await ses.cookies.get({ url })
     if (byUrl.length > 0) return byUrl
@@ -354,8 +361,7 @@ export class BrowserPool {
   }
 
   async executeInProfile<T>(profileId: string, url: string, script: string): Promise<T> {
-    const profile = this.profiles.find((p) => p.id === profileId)
-    if (!profile) throw new Error(`Profile not found: ${profileId}`)
+    const profile = this.ensureProfile(profileId)
     const proxy = this.resolveProxy(profile)
     let win = this.windows.get(profileId)
     if (!win || win.isDestroyed()) {

@@ -10,6 +10,7 @@ import type {
   FreeProxySettings,
   GetApiKeyBalanceOptions,
   GetApiKeyBalanceResult,
+  AppUpdateInfo,
   ApiKeyGroupOption,
   ListApiKeyGroupsOptions,
   JobProgressEvent,
@@ -55,6 +56,9 @@ export interface ElectronAPI {
   clearRegistrationLogs(): Promise<void>
   createNewApiKey(options: CreateNewApiKeyOptions): Promise<CreateNewApiKeyResult>
   getApiKeyBalance(options: GetApiKeyBalanceOptions): Promise<GetApiKeyBalanceResult>
+  getAppVersion(): Promise<string>
+  checkForUpdate(): Promise<AppUpdateInfo>
+  openExternalUrl(url: string): Promise<void>
   listApiKeyGroups(options: ListApiKeyGroupsOptions): Promise<ApiKeyGroupOption[]>
   updateApiKeyGroup(options: UpdateApiKeyGroupOptions): Promise<UpdateApiKeyGroupResult>
   testEmailProvider(providerId: string): Promise<{ success: boolean; email?: string; error?: string }>
@@ -97,6 +101,9 @@ const api: ElectronAPI = {
   clearRegistrationLogs: () => ipcRenderer.invoke('clear-registration-logs'),
   createNewApiKey: (options) => ipcRenderer.invoke('create-new-api-key', options),
   getApiKeyBalance: (options) => ipcRenderer.invoke('get-api-key-balance', options),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   listApiKeyGroups: (options) => ipcRenderer.invoke('list-api-key-groups', options),
   updateApiKeyGroup: (options) => ipcRenderer.invoke('update-api-key-group', options),
   testEmailProvider: (providerId) => ipcRenderer.invoke('test-email-provider', providerId)

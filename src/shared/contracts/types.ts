@@ -214,6 +214,15 @@ export interface GetApiKeyBalanceResult {
   metadata?: Record<string, unknown>
 }
 
+export interface AppUpdateInfo {
+  currentVersion: string
+  latestVersion?: string
+  updateAvailable: boolean
+  releaseUrl?: string
+  releaseName?: string
+  error?: string
+}
+
 export interface ApiKeyGroupOption {
   id: number
   name: string

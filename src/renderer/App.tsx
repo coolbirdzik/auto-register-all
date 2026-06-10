@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ManualOtpRequest } from '../shared/contracts'
+import type { AppUpdateInfo, ManualOtpRequest } from '../shared/contracts'
 import RegisterTab from './tabs/RegisterTab'
 import AccountsTab from './tabs/AccountsTab'
 import ProxiesTab from './tabs/ProxiesTab'
@@ -40,6 +40,10 @@ export default function App(): JSX.Element {
   const [otpCode, setOtpCode] = useState('')
   const [submittingOtp, setSubmittingOtp] = useState(false)
   const [otpError, setOtpError] = useState('')
+  const [appVersion, setAppVersion] = useState('')
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [updateMessage, setUpdateMessage] = useState('')
 
   useEffect(() => {
     return window.electronAPI.onManualOtpRequest((request) => {
@@ -47,6 +51,22 @@ export default function App(): JSX.Element {
       setOtpCode('')
       setOtpError('')
     })
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    void window.electronAPI.getAppVersion().then((version) => {
+      if (mounted) setAppVersion(version)
+    })
+    void window.electronAPI.checkForUpdate().then((info) => {
+      if (mounted) {
+        setUpdateInfo(info)
+        setAppVersion(info.currentVersion)
+      }
+    })
+    return () => {
+      mounted = false
+    }
   }, [])
 
   async function handleSubmitOtp(): Promise<void> {
@@ -68,6 +88,27 @@ export default function App(): JSX.Element {
       setOtpError(String(err))
     } finally {
       setSubmittingOtp(false)
+    }
+  }
+
+  async function handleCheckUpdate(): Promise<void> {
+    setCheckingUpdate(true)
+    setUpdateMessage('')
+    try {
+      const info = await window.electronAPI.checkForUpdate()
+      setUpdateInfo(info)
+      setAppVersion(info.currentVersion)
+      if (info.error) {
+        setUpdateMessage('Update check failed')
+      } else if (info.updateAvailable) {
+        setUpdateMessage(`New version v${info.latestVersion}`)
+      } else {
+        setUpdateMessage('Up to date')
+      }
+    } catch {
+      setUpdateMessage('Update check failed')
+    } finally {
+      setCheckingUpdate(false)
     }
   }
 
@@ -104,7 +145,20 @@ export default function App(): JSX.Element {
 
         <div className="sidebar-footer">
           <span className="status-dot" />
-          <span>Ready · v1.0.0</span>
+          <span>Ready · v{appVersion || '...'}</span>
+          {updateInfo?.updateAvailable && updateInfo.releaseUrl && (
+            <button
+              className="link-button"
+              title={updateInfo.releaseName || `Version ${updateInfo.latestVersion}`}
+              onClick={() => void window.electronAPI.openExternalUrl(updateInfo.releaseUrl || 'https://github.com/coolbirdzik/auto-register-all/releases')}
+            >
+              Update v{updateInfo.latestVersion}
+            </button>
+          )}
+          <button className="link-button" disabled={checkingUpdate} onClick={() => void handleCheckUpdate()}>
+            {checkingUpdate ? 'Checking...' : 'Check update'}
+          </button>
+          {updateMessage && <span>{updateMessage}</span>}
         </div>
       </nav>
 

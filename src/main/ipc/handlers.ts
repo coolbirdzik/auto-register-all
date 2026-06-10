@@ -1,8 +1,9 @@
-import { dialog, ipcMain, BrowserWindow } from 'electron'
+import { app, dialog, ipcMain, BrowserWindow, shell } from 'electron'
 import { writeFile } from 'fs/promises'
 import { v4 as uuidv4 } from 'uuid'
 import type {
   AppSettings,
+  AppUpdateInfo,
   BrowserProfile,
   CreateNewApiKeyOptions,
   ExportOptions,
@@ -60,6 +61,19 @@ export function registerIpcHandlers(deps: {
   const newApiTokenClient = new NewApiTokenClient(proxyManager)
   const weiLaiApiKeyClient = new WeiLaiApiKeyClient(browserPool, proxyManager)
   const aiRouterApiKeyClient = new AiRouterApiKeyClient(browserPool, proxyManager)
+
+  const normalizeVersion = (value: string): string => value.trim().replace(/^v/i, '')
+
+  const compareVersions = (a: string, b: string): number => {
+    const left = normalizeVersion(a).split(/[.-]/).map((part) => Number(part) || 0)
+    const right = normalizeVersion(b).split(/[.-]/).map((part) => Number(part) || 0)
+    const length = Math.max(left.length, right.length)
+    for (let i = 0; i < length; i++) {
+      const diff = (left[i] ?? 0) - (right[i] ?? 0)
+      if (diff !== 0) return diff
+    }
+    return 0
+  }
 
   const importProxyBatch = (proxies: ProxyConfig[]): ProxyConfig[] => {
     const existing = new Set(
@@ -283,6 +297,48 @@ export function registerIpcHandlers(deps: {
   }
 
   syncFromSettings()
+
+  ipcMain.handle('get-app-version', () => app.getVersion())
+
+  ipcMain.handle('check-for-update', async (): Promise<AppUpdateInfo> => {
+    const currentVersion = app.getVersion()
+    try {
+      const res = await fetch('https://api.github.com/repos/coolbirdzik/auto-register-all/releases/latest', {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': `auto-register/${currentVersion}`
+        }
+      } as RequestInit)
+      if (!res.ok) {
+        throw new Error(`GitHub releases request failed (${res.status})`)
+      }
+
+      const json = (await res.json()) as Record<string, unknown>
+      const tagName = String(json.tag_name || '')
+      const latestVersion = normalizeVersion(tagName)
+      if (!latestVersion) throw new Error('Latest release version was not found')
+
+      return {
+        currentVersion,
+        latestVersion,
+        updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
+        releaseUrl: String(json.html_url || 'https://github.com/coolbirdzik/auto-register-all/releases'),
+        releaseName: typeof json.name === 'string' ? json.name : tagName
+      }
+    } catch (err) {
+      return {
+        currentVersion,
+        updateAvailable: false,
+        releaseUrl: 'https://github.com/coolbirdzik/auto-register-all/releases',
+        error: String(err)
+      }
+    }
+  })
+
+  ipcMain.handle('open-external-url', async (_e, url: string) => {
+    if (!/^https?:\/\//i.test(url)) throw new Error('Only HTTP(S) URLs can be opened')
+    await shell.openExternal(url)
+  })
 
   ipcMain.handle('get-settings', () => settingsStore.get())
 

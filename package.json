@@ -1,6 +1,6 @@
 {
   "name": "auto-register",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Electron multi-site auto-register app",
   "main": "./out/main/index.js",
   "scripts": {
@@ -50,7 +50,8 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "Auto-Register-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -63,6 +64,7 @@
         "dmg",
         "zip"
       ],
+      "artifactName": "Auto-Register-${version}-${arch}.${ext}",
       "hardenedRuntime": true,
       "category": "public.app-category.productivity"
     }

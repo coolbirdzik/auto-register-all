@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type {
   AppSettings,
   AppUpdateInfo,
+  AppUpdateState,
   BrowserProfile,
   CreateNewApiKeyOptions,
   ExportOptions,
@@ -16,6 +17,13 @@ import type {
   UpdateApiKeyGroupOptions,
   ZingProxySettings
 } from '../../shared/contracts'
+import {
+  checkForUpdates,
+  downloadUpdate,
+  getUpdateState,
+  initUpdater,
+  quitAndInstall
+} from '../updater'
 import type { BrowserPool } from '../browser/browser-pool'
 import type { JobRunner } from '../core/job-runner'
 import type { ProviderRegistry } from '../core/registry'
@@ -338,6 +346,23 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle('open-external-url', async (_e, url: string) => {
     if (!/^https?:\/\//i.test(url)) throw new Error('Only HTTP(S) URLs can be opened')
     await shell.openExternal(url)
+  })
+
+  // Auto-update lifecycle: state, download, install
+  initUpdater()
+
+  ipcMain.handle('updater-get-state', (): AppUpdateState => getUpdateState())
+
+  ipcMain.handle('updater-check', async (): Promise<AppUpdateState> => {
+    return checkForUpdates()
+  })
+
+  ipcMain.handle('updater-download', async (): Promise<AppUpdateState> => {
+    return downloadUpdate()
+  })
+
+  ipcMain.handle('updater-quit-and-install', () => {
+    quitAndInstall()
   })
 
   ipcMain.handle('get-settings', () => settingsStore.get())

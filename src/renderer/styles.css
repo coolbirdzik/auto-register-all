@@ -1,30 +1,30 @@
 /* ============================================================
    Auto Register - Renderer design system
-   Dark theme with an indigo/violet accent.
+   Dark theme with a blue accent.
    ============================================================ */
 
 :root {
   /* Surfaces */
-  --bg: #0a0d16;
-  --bg-elev: #0f1322;
-  --surface: #141a29;
-  --surface-2: #1a2133;
-  --surface-3: #222c43;
-  --border: #232d44;
-  --border-strong: #31405e;
+  --bg: #0a0f1a;
+  --bg-elev: #0f1626;
+  --surface: #131c30;
+  --surface-2: #18233a;
+  --surface-3: #1f2d49;
+  --border: #223150;
+  --border-strong: #31436a;
 
   /* Text */
-  --text: #eaeefb;
-  --text-muted: #9aa6c4;
-  --text-faint: #687697;
+  --text: #e8eefb;
+  --text-muted: #98a8c6;
+  --text-faint: #6a7a99;
 
-  /* Accent (indigo / violet) */
-  --accent: #7c6cff;
-  --accent-strong: #6a57ff;
-  --accent-hover: #8e80ff;
+  /* Accent (blue) */
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;
+  --accent-hover: #60a5fa;
   --accent-fg: #ffffff;
-  --accent-soft: rgba(124, 108, 255, 0.14);
-  --accent-ring: rgba(124, 108, 255, 0.4);
+  --accent-soft: rgba(59, 130, 246, 0.14);
+  --accent-ring: rgba(59, 130, 246, 0.4);
 
   /* Status */
   --success: #3ddc97;
@@ -39,6 +39,22 @@
   --info: #4fb6ff;
   --info-soft: rgba(79, 182, 255, 0.14);
   --info-border: rgba(79, 182, 255, 0.32);
+
+  /* Theme-dependent utility colors */
+  --body-radial-1: rgba(59, 130, 246, 0.14);
+  --body-radial-2: rgba(79, 182, 255, 0.08);
+  --sidebar-sheen: rgba(255, 255, 255, 0.02);
+  --brand-logo-fg: #ffffff;
+  --nav-active-fg: #cfdcff;
+  --checkbox-fg: #ffffff;
+  --table-head-bg: #15203a;
+  --table-row-alt: rgba(255, 255, 255, 0.016);
+  --notice-info-fg: #bfe6ff;
+  --notice-success-fg: #aff0d2;
+  --notice-danger-fg: #ffc4c4;
+  --modal-backdrop: rgba(0, 0, 0, 0.62);
+  --log-bg: #0a0f1a;
+  --log-toolbar-bg: rgba(255, 255, 255, 0.015);
 
   /* Log levels */
   --log-info: #7fd4ff;
@@ -65,6 +81,72 @@
     monospace;
 }
 
+:root[data-theme='light'] {
+  /* Surfaces */
+  --bg: #f4f7fb;
+  --bg-elev: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef3fb;
+  --surface-3: #e3ebf8;
+  --border: #d9e2f0;
+  --border-strong: #c2cfe0;
+
+  /* Text */
+  --text: #182235;
+  --text-muted: #52617a;
+  --text-faint: #7a879b;
+
+  /* Accent (blue) */
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-hover: #3b82f6;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --accent-ring: rgba(37, 99, 235, 0.22);
+
+  /* Status */
+  --success: #0f9f6e;
+  --success-soft: rgba(15, 159, 110, 0.1);
+  --success-border: rgba(15, 159, 110, 0.24);
+  --danger: #dc3f47;
+  --danger-soft: rgba(220, 63, 71, 0.1);
+  --danger-border: rgba(220, 63, 71, 0.25);
+  --warn: #a96900;
+  --warn-soft: rgba(169, 105, 0, 0.12);
+  --warn-border: rgba(169, 105, 0, 0.25);
+  --info: #1677c9;
+  --info-soft: rgba(22, 119, 201, 0.1);
+  --info-border: rgba(22, 119, 201, 0.24);
+
+  /* Log levels */
+  --log-info: #0b6eaa;
+  --log-success: #0f8f64;
+  --log-warn: #9a6200;
+  --log-error: #c93642;
+  --log-debug: #66758c;
+
+  /* Theme-dependent utility colors */
+  --body-radial-1: rgba(37, 99, 235, 0.14);
+  --body-radial-2: rgba(22, 119, 201, 0.1);
+  --sidebar-sheen: rgba(37, 99, 235, 0.05);
+  --brand-logo-fg: #ffffff;
+  --nav-active-fg: #1d4ed8;
+  --checkbox-fg: #ffffff;
+  --table-head-bg: #eef3fb;
+  --table-row-alt: rgba(18, 34, 53, 0.025);
+  --notice-info-fg: #0d5f99;
+  --notice-success-fg: #087a56;
+  --notice-danger-fg: #b42f39;
+  --modal-backdrop: rgba(15, 23, 42, 0.4);
+  --log-bg: #f8fbff;
+  --log-toolbar-bg: rgba(18, 34, 53, 0.025);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow: 0 12px 32px -20px rgba(15, 23, 42, 0.28);
+  --shadow-lg: 0 24px 56px -24px rgba(15, 23, 42, 0.32);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -83,8 +165,8 @@ body {
   line-height: 1.5;
   color: var(--text);
   background-color: var(--bg);
-  background-image: radial-gradient(1100px 600px at 100% -5%, rgba(124, 108, 255, 0.12), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(79, 182, 255, 0.08), transparent 55%);
+  background-image: radial-gradient(1100px 600px at 100% -5%, var(--body-radial-1), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, var(--body-radial-2), transparent 55%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -133,7 +215,7 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%), var(--bg-elev);
+  background: linear-gradient(180deg, var(--sidebar-sheen), transparent 40%), var(--bg-elev);
   border-right: 1px solid var(--border);
 }
 
@@ -151,7 +233,7 @@ body {
   display: grid;
   place-items: center;
   border-radius: var(--radius);
-  color: #fff;
+  color: var(--brand-logo-fg);
   background: linear-gradient(135deg, var(--accent), #4f8bff);
   box-shadow: 0 6px 16px -6px var(--accent-ring);
 }
@@ -211,7 +293,7 @@ body {
 
 .nav-item.active {
   background: var(--accent-soft);
-  color: #cfc9ff;
+  color: var(--nav-active-fg);
 }
 
 .nav-item.active .nav-icon {
@@ -241,6 +323,11 @@ body {
   flex-wrap: wrap;
 }
 
+.theme-toggle {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
 .link-button {
   border: 0;
   background: transparent;
@@ -266,6 +353,38 @@ body {
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 0 3px var(--success-soft);
+}
+
+.update-text {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.update-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.update-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  transition: width 200ms ease;
+}
+
+.update-install {
+  color: var(--success);
+  font-weight: 600;
 }
 
 .content {
@@ -520,7 +639,7 @@ input[type='number']::-webkit-inner-spin-button {
   border-radius: 5px;
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
-  color: #fff;
+  color: var(--checkbox-fg);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -737,7 +856,7 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #161d2d;
+  background: var(--table-head-bg);
   text-align: left;
   font-weight: 600;
   font-size: 11.5px;
@@ -765,7 +884,7 @@ tbody tr {
 }
 
 tbody tr:nth-child(even) td {
-  background: rgba(255, 255, 255, 0.016);
+  background: var(--table-row-alt);
 }
 
 tbody tr:hover td {
@@ -926,17 +1045,17 @@ tbody tr:hover td {
 }
 .notice-info {
   background: var(--info-soft);
-  color: #bfe6ff;
+  color: var(--notice-info-fg);
   border-color: var(--info-border);
 }
 .notice-success {
   background: var(--success-soft);
-  color: #aff0d2;
+  color: var(--notice-success-fg);
   border-color: var(--success-border);
 }
 .notice-danger {
   background: var(--danger-soft);
-  color: #ffc4c4;
+  color: var(--notice-danger-fg);
   border-color: var(--danger-border);
 }
 
@@ -955,7 +1074,7 @@ tbody tr:hover td {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.62);
+  background: var(--modal-backdrop);
 }
 
 .modal {
@@ -1001,7 +1120,7 @@ tbody tr:hover td {
    ============================================================ */
 
 .log-panel {
-  background: #0a0e18;
+  background: var(--log-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -1013,7 +1132,7 @@ tbody tr:hover td {
   gap: 8px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--log-toolbar-bg);
 }
 
 .log-dots {

@@ -223,6 +223,33 @@ export interface AppUpdateInfo {
   error?: string
 }
 
+export type AppUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export interface AppUpdateProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+export interface AppUpdateState {
+  status: AppUpdateStatus
+  currentVersion: string
+  latestVersion?: string
+  releaseName?: string
+  releaseNotes?: string
+  releaseUrl?: string
+  progress?: AppUpdateProgress
+  error?: string
+}
+
 export interface ApiKeyGroupOption {
   id: number
   name: string

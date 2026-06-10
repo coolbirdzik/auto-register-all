@@ -11,6 +11,7 @@ import type {
   GetApiKeyBalanceOptions,
   GetApiKeyBalanceResult,
   AppUpdateInfo,
+  AppUpdateState,
   ApiKeyGroupOption,
   ListApiKeyGroupsOptions,
   JobProgressEvent,
@@ -58,6 +59,11 @@ export interface ElectronAPI {
   getApiKeyBalance(options: GetApiKeyBalanceOptions): Promise<GetApiKeyBalanceResult>
   getAppVersion(): Promise<string>
   checkForUpdate(): Promise<AppUpdateInfo>
+  getUpdateState(): Promise<AppUpdateState>
+  checkForUpdateLive(): Promise<AppUpdateState>
+  downloadUpdate(): Promise<AppUpdateState>
+  quitAndInstallUpdate(): Promise<void>
+  onUpdateState(callback: (state: AppUpdateState) => void): () => void
   openExternalUrl(url: string): Promise<void>
   listApiKeyGroups(options: ListApiKeyGroupsOptions): Promise<ApiKeyGroupOption[]>
   updateApiKeyGroup(options: UpdateApiKeyGroupOptions): Promise<UpdateApiKeyGroupResult>
@@ -103,6 +109,15 @@ const api: ElectronAPI = {
   getApiKeyBalance: (options) => ipcRenderer.invoke('get-api-key-balance', options),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
+  getUpdateState: () => ipcRenderer.invoke('updater-get-state'),
+  checkForUpdateLive: () => ipcRenderer.invoke('updater-check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater-download'),
+  quitAndInstallUpdate: () => ipcRenderer.invoke('updater-quit-and-install'),
+  onUpdateState: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, state: AppUpdateState): void => callback(state)
+    ipcRenderer.on('update-state', handler)
+    return () => ipcRenderer.removeListener('update-state', handler)
+  },
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   listApiKeyGroups: (options) => ipcRenderer.invoke('list-api-key-groups', options),
   updateApiKeyGroup: (options) => ipcRenderer.invoke('update-api-key-group', options),

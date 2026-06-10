@@ -45,15 +45,21 @@ export default function ApiKeysTab(): JSX.Element {
   const [bulkRunning, setBulkRunning] = useState(false)
   const [groupRunning, setGroupRunning] = useState(false)
   const [bulkGroupRunning, setBulkGroupRunning] = useState(false)
+  const [bulkBalanceRunning, setBulkBalanceRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [balanceRunningId, setBalanceRunningId] = useState<string | null>(null)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportMinBalance, setExportMinBalance] = useState('')
+  const [exportMaxBalance, setExportMaxBalance] = useState('')
+  const [exportSkipNoBalance, setExportSkipNoBalance] = useState(false)
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
 
   const supportedSiteIds = new Set(['tokenlb', 'weilai-chat', 'ai-router'])
   const managedGroupSiteIds = new Set(['weilai-chat', 'ai-router'])
-  const balanceSupportedSiteIds = new Set(['weilai-chat', 'ai-router'])
+  const balanceSupportedSiteIds = new Set(['tokenlb', 'weilai-chat', 'ai-router'])
 
   useEffect(() => {
     void load()
@@ -283,15 +289,77 @@ export default function ApiKeysTab(): JSX.Element {
     }
   }
 
+  async function handleBulkGetBalance(): Promise<void> {
+    const selected = new Set(selectedAccountIds)
+    const targets = filteredAccounts.filter(
+      (account) => selected.has(account.id) && account.apiKey && balanceSupportedSiteIds.has(account.siteId)
+    )
+
+    if (targets.length === 0) {
+      setMessage('No selected API keys support balance lookup.')
+      return
+    }
+
+    setBulkBalanceRunning(true)
+    setError('')
+    setMessage('')
+    setBulkProgress(`0/${targets.length}`)
+
+    let success = 0
+    const failures: string[] = []
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const account = targets[i]
+        const accountLabel = account.username || account.email || account.id
+        setBulkProgress(`${i + 1}/${targets.length}: ${accountLabel}`)
+        try {
+          const result = await window.electronAPI.getApiKeyBalance({ accountId: account.id })
+          success += 1
+          setAccounts((prev) => prev.map((item) => (item.id === result.account.id ? result.account : item)))
+        } catch (err) {
+          failures.push(`${accountLabel}: ${String(err)}`)
+        }
+      }
+
+      setMessage(`Fetched balances for ${success}/${targets.length} account(s).`)
+      if (failures.length > 0) setError(failures.slice(0, 3).join('\n'))
+    } finally {
+      setBulkBalanceRunning(false)
+      setBulkProgress('')
+    }
+  }
+
+  function toggleSelectedAccount(accountId: string, checked: boolean): void {
+    setSelectedAccountIds((prev) => {
+      if (checked) return prev.includes(accountId) ? prev : [...prev, accountId]
+      return prev.filter((id) => id !== accountId)
+    })
+  }
+
   function handleExport(): void {
+    setShowExportModal(true)
+  }
+
+  function doExport(): void {
+    const minBal = exportMinBalance.trim() !== '' ? Number(exportMinBalance) : undefined
+    const maxBal = exportMaxBalance.trim() !== '' ? Number(exportMaxBalance) : undefined
+
     const lines = filteredAccounts
-      .filter((account) => account.apiKey)
+      .filter((account) => {
+        if (!account.apiKey) return false
+        if (exportSkipNoBalance && account.apiBalance == null) return false
+        if (minBal !== undefined && (account.apiBalance ?? 0) < minBal) return false
+        if (maxBal !== undefined && (account.apiBalance ?? 0) > maxBal) return false
+        return true
+      })
       .map(
         (account) =>
-          `${getSiteName(account.siteId)}|${account.username || account.email || account.id}|${account.apiKey}|${account.apiKeyGroupName || ''}|${account.apiBalanceLabel || ''}`
+          `${getSiteName(account.siteId)}|${account.username || account.email || account.id}|${account.apiKey}|${account.apiKeyGroupName || ''}|${account.apiBalance != null ? account.apiBalance.toFixed(4) : ''}|${account.apiUsedQuota != null ? account.apiUsedQuota.toFixed(4) : ''}`
       )
+
     if (lines.length === 0) {
-      setError('No API keys to export')
+      setError('No API keys match the export filters')
+      setShowExportModal(false)
       return
     }
 
@@ -305,6 +373,7 @@ export default function ApiKeysTab(): JSX.Element {
     link.remove()
     URL.revokeObjectURL(url)
     setMessage(`Exported ${lines.length} API key(s).`)
+    setShowExportModal(false)
   }
 
   const selectedAccount = accounts.find((account) => account.id === accountId)
@@ -317,6 +386,12 @@ export default function ApiKeysTab(): JSX.Element {
       : groupOptions
   const selectedAccountSupportsManagedGroups = selectedAccount ? managedGroupSiteIds.has(selectedAccount.siteId) : false
   const selectedAccountSupportsBalance = selectedAccount ? balanceSupportedSiteIds.has(selectedAccount.siteId) : false
+  const selectableBalanceAccounts = filteredAccounts.filter(
+    (account) => account.apiKey && balanceSupportedSiteIds.has(account.siteId)
+  )
+  const selectedBalanceAccountCount = selectableBalanceAccounts.filter((account) => selectedAccountIds.includes(account.id)).length
+  const allBalanceAccountsSelected =
+    selectableBalanceAccounts.length > 0 && selectedBalanceAccountCount === selectableBalanceAccounts.length
 
   useEffect(() => {
     if (selectedAccount && managedGroupSiteIds.has(selectedAccount.siteId)) {
@@ -330,6 +405,11 @@ export default function ApiKeysTab(): JSX.Element {
       setGroupOptions([])
     }
   }, [selectedAccount?.id, selectedAccount?.siteId, accounts])
+
+  useEffect(() => {
+    const visibleIds = new Set(filteredAccounts.map((account) => account.id))
+    setSelectedAccountIds((current) => current.filter((id) => visibleIds.has(id)))
+  }, [siteFilter, accounts])
 
   function getSiteName(siteId: string): string {
     return sites.find((site) => site.id === siteId)?.name ?? siteId
@@ -469,7 +549,7 @@ export default function ApiKeysTab(): JSX.Element {
               <Button
                 variant="primary"
                 loading={running}
-                disabled={bulkRunning || groupRunning || bulkGroupRunning}
+                disabled={bulkRunning || groupRunning || bulkGroupRunning || bulkBalanceRunning}
                 icon={<PlayIcon size={16} />}
                 onClick={() => void handleCreate()}
               >
@@ -478,7 +558,7 @@ export default function ApiKeysTab(): JSX.Element {
               <Button
                 variant="secondary"
                 loading={bulkRunning}
-                disabled={running || groupRunning || bulkGroupRunning}
+                disabled={running || groupRunning || bulkGroupRunning || bulkBalanceRunning}
                 icon={<PlayIcon size={16} />}
                 onClick={() => void handleCreateAll()}
               >
@@ -490,7 +570,7 @@ export default function ApiKeysTab(): JSX.Element {
               <Button
                 variant="secondary"
                 loading={groupRunning}
-                disabled={!selectedAccount?.apiKey || !selectedAccountSupportsManagedGroups || running || bulkRunning || bulkGroupRunning}
+                disabled={!selectedAccount?.apiKey || !selectedAccountSupportsManagedGroups || running || bulkRunning || bulkGroupRunning || bulkBalanceRunning}
                 icon={<RefreshIcon size={15} />}
                 onClick={() => void handleUpdateGroup()}
               >
@@ -503,12 +583,22 @@ export default function ApiKeysTab(): JSX.Element {
                   running ||
                   bulkRunning ||
                   groupRunning ||
+                  bulkBalanceRunning ||
                   filteredAccounts.every((account) => !managedGroupSiteIds.has(account.siteId) || !account.apiKey)
                 }
                 icon={<RefreshIcon size={15} />}
                 onClick={() => void handleBulkUpdateGroup()}
               >
                 Bulk Update Group
+              </Button>
+              <Button
+                variant="secondary"
+                loading={bulkBalanceRunning}
+                disabled={running || bulkRunning || groupRunning || bulkGroupRunning || selectedBalanceAccountCount === 0}
+                icon={<RefreshIcon size={15} />}
+                onClick={() => void handleBulkGetBalance()}
+              >
+                Get Balance Bulk ({selectedBalanceAccountCount})
               </Button>
               <Button variant="secondary" icon={<DownloadIcon size={15} />} onClick={handleExport}>
                 Export TXT
@@ -521,6 +611,26 @@ export default function ApiKeysTab(): JSX.Element {
               <table>
                 <thead>
                   <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        checked={allBalanceAccountsSelected}
+                        disabled={selectableBalanceAccounts.length === 0 || bulkBalanceRunning}
+                        onChange={(e) => {
+                          const selectableIds = selectableBalanceAccounts.map((account) => account.id)
+                          setSelectedAccountIds((current) => {
+                            const currentSet = new Set(current)
+                            if (e.target.checked) {
+                              selectableIds.forEach((id) => currentSet.add(id))
+                            } else {
+                              selectableIds.forEach((id) => currentSet.delete(id))
+                            }
+                            return Array.from(currentSet)
+                          })
+                        }}
+                        aria-label="Select all balance accounts"
+                      />
+                    </th>
                     <th>Site</th>
                     <th>Account</th>
                     <th>Email</th>
@@ -535,6 +645,15 @@ export default function ApiKeysTab(): JSX.Element {
                 <tbody>
                   {filteredAccounts.map((account) => (
                     <tr key={account.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedAccountIds.includes(account.id)}
+                          disabled={!account.apiKey || !balanceSupportedSiteIds.has(account.siteId) || bulkBalanceRunning}
+                          onChange={(e) => toggleSelectedAccount(account.id, e.target.checked)}
+                          aria-label={`Select ${account.username || account.email || account.id}`}
+                        />
+                      </td>
                       <td>{getSiteName(account.siteId)}</td>
                       <td className="mono">{account.username || '-'}</td>
                       <td className="mono">{account.email || '-'}</td>
@@ -560,7 +679,16 @@ export default function ApiKeysTab(): JSX.Element {
                       </td>
                       <td>
                         <div className="stack">
-                          <span>{account.apiBalanceLabel || '-'}</span>
+                          {account.apiBalance != null ? (
+                            <>
+                              <span>${account.apiBalance.toFixed(4)}</span>
+                              {account.apiUsedQuota != null && (
+                                <span className="cell-secondary">used ${account.apiUsedQuota.toFixed(4)}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span>-</span>
+                          )}
                           {account.apiBalanceFetchedAt && (
                             <span className="cell-secondary">{new Date(account.apiBalanceFetchedAt).toLocaleString()}</span>
                           )}
@@ -575,7 +703,7 @@ export default function ApiKeysTab(): JSX.Element {
                           <Button
                             variant="ghost"
                             loading={balanceRunningId === account.id}
-                            disabled={!account.apiKey || !balanceSupportedSiteIds.has(account.siteId)}
+                            disabled={!account.apiKey || !balanceSupportedSiteIds.has(account.siteId) || bulkBalanceRunning}
                             icon={<RefreshIcon size={15} />}
                             onClick={() => void handleGetBalance(account.id)}
                           >
@@ -599,6 +727,53 @@ export default function ApiKeysTab(): JSX.Element {
             </div>
           </Card>
         </>
+      )}
+
+      {showExportModal && (
+        <div className="modal-backdrop">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
+            <div className="modal-header">
+              <h2 id="export-modal-title" className="modal-title">Export API Keys</h2>
+              <p className="modal-subtitle">Filter which keys to include in the export.</p>
+            </div>
+            <div className="modal-body">
+              <Field label="Min Balance ($)" hint="Only export keys with balance ≥ this value">
+                <Input
+                  type="number"
+                  value={exportMinBalance}
+                  placeholder="e.g. 0.5"
+                  onChange={(e) => setExportMinBalance(e.target.value)}
+                />
+              </Field>
+              <Field label="Max Balance ($)" hint="Only export keys with balance ≤ this value">
+                <Input
+                  type="number"
+                  value={exportMaxBalance}
+                  placeholder="e.g. 100"
+                  onChange={(e) => setExportMaxBalance(e.target.value)}
+                />
+              </Field>
+              <Field label="Balance Check">
+                <Checkbox
+                  label="Skip accounts with no balance data fetched"
+                  checked={exportSkipNoBalance}
+                  onChange={(e) => setExportSkipNoBalance(e.target.checked)}
+                />
+              </Field>
+              <p className="cell-secondary">
+                Format: site|username|apiKey|group|balance|usedQuota
+              </p>
+            </div>
+            <div className="modal-actions">
+              <Button variant="primary" icon={<DownloadIcon size={15} />} onClick={doExport}>
+                Export
+              </Button>
+              <Button variant="ghost" onClick={() => setShowExportModal(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

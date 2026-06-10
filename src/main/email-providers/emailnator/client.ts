@@ -113,6 +113,62 @@ export class EmailnatorClient {
     return result.text
   }
 
+  private async postTextWithoutProxy(ctx: JobContext, path: string, body: unknown): Promise<string> {
+    const partition = `emailnator-html:${ctx.jobId}`
+    const win = new BrowserWindow({
+      show: false,
+      paintWhenInitiallyHidden: true,
+      width: 960,
+      height: 720,
+      title: 'Emailnator Message HTML',
+      webPreferences: {
+        partition,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false
+      }
+    })
+
+    try {
+      await win.loadURL(BASE_URL)
+      const result = await win.webContents.executeJavaScript(
+        `new Promise(async (resolve) => {
+          const getCookie = (name) => {
+            const item = document.cookie.split('; ').find((part) => part.startsWith(name + '='));
+            return item ? decodeURIComponent(item.slice(name.length + 1)) : '';
+          };
+          try {
+            const xsrf = getCookie('XSRF-TOKEN');
+            const res = await window.fetch(${JSON.stringify(path)}, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                Accept: 'application/json, text/plain, */*',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(xsrf ? { 'X-XSRF-TOKEN': xsrf } : {})
+              },
+              body: ${JSON.stringify(JSON.stringify(body))}
+            });
+            const text = await res.text();
+            resolve({ ok: res.ok, status: res.status, text });
+          } catch (err) {
+            resolve({ ok: false, status: 0, text: String(err) });
+          }
+        })`,
+        true
+      ) as { ok: boolean; status: number; text: string }
+
+      if (!result.ok) {
+        throw new Error(`Emailnator no-proxy request failed (${result.status}): ${result.text.slice(0, 300)}`)
+      }
+      return result.text
+    } finally {
+      if (!win.isDestroyed()) win.destroy()
+    }
+  }
+
   private async openInboxPage(ctx: JobContext, email: string, options?: { reload?: boolean }): Promise<void> {
     if (ctx.headless) return
     const win = await this.ensurePreviewWindow(ctx)
@@ -306,12 +362,7 @@ export class EmailnatorClient {
 
   async getMessage(ctx: JobContext, email: string, messageID: string): Promise<string> {
     await this.updatePreview(ctx, `Opening message:\n${email}\nMessage ID: ${messageID}`)
-    if (!ctx.headless) {
-      const scraped = await this.scrapeMessageHtml(ctx, email, { messageID, from: '', subject: '' })
-      if (scraped) return scraped
-    }
-
-    const html = await this.postText(ctx, '/message-list', { email, messageID })
+    const html = await this.postTextWithoutProxy(ctx, '/message-list', { email, messageID })
     await this.renderMessageHtml(ctx, html)
     await this.updatePreview(ctx, `Message loaded:\n${email}\nMessage ID: ${messageID}`)
     return html

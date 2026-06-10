@@ -132,7 +132,7 @@ export class AiRouterApiKeyClient {
     config: AiRouterSiteConfig,
     account: AccountRecord,
     proxy?: ProxyConfig
-  ): Promise<{ balance: number; label: string; metadata?: Record<string, unknown> }> {
+  ): Promise<{ balance: number; used?: number; label: string; metadata?: Record<string, unknown> }> {
     const siteConfig = this.normalizeSiteConfig(config)
     const token = await this.resolveAuthToken(siteConfig, account, proxy)
     const endpoints = ['/auth/me', '/user/profile']
@@ -375,7 +375,7 @@ export class AiRouterApiKeyClient {
 
   private parseBalance(
     data: unknown
-  ): { balance: number; label: string; metadata?: Record<string, unknown> } | null {
+  ): { balance: number; used?: number; label: string; metadata?: Record<string, unknown> } | null {
     const metadata = data && typeof data === 'object' ? (data as Record<string, unknown>) : { value: data }
     const candidates: Array<{ key: string; value: unknown }> = []
 
@@ -394,16 +394,28 @@ export class AiRouterApiKeyClient {
     }
 
     visit(data, '', 0)
+
+    // Extract used quota if present
+    let used: number | undefined
+    if (data && typeof data === 'object') {
+      const obj = data as Record<string, unknown>
+      const usedRaw = obj['used_quota'] ?? obj['usedQuota'] ?? obj['used_credit'] ?? obj['used']
+      if (typeof usedRaw === 'number' && Number.isFinite(usedRaw)) used = usedRaw
+    }
+
     for (const candidate of candidates) {
       const numericValue =
         typeof candidate.value === 'number'
           ? candidate.value
           : Number(String(candidate.value).replace(/[^0-9.-]+/g, ''))
       if (!Number.isFinite(numericValue)) continue
-      const label = /balance|credit|fuel|wallet/i.test(candidate.key)
-        ? `$${numericValue.toFixed(4)}`
+      const isMonetary = /balance|credit|fuel|wallet/i.test(candidate.key)
+      const label = isMonetary
+        ? used !== undefined
+          ? `$${numericValue.toFixed(4)} (used $${used.toFixed(4)})`
+          : `$${numericValue.toFixed(4)}`
         : `${numericValue}`
-      return { balance: numericValue, label, metadata }
+      return { balance: numericValue, used, label, metadata }
     }
 
     return null

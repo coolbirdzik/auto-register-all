@@ -1,6 +1,21 @@
 import type { CreateNewApiKeyOptions, NewApiTokenRecord, ProxyConfig } from '../../shared/contracts'
 import type { ProxyManager } from '../proxy/proxy-manager'
 
+// New-API quota unit: 500,000 quota = $1 USD
+const QUOTA_PER_USD = 500_000
+
+interface NewApiUserSelfResponse {
+  data?: {
+    quota?: number
+    used_quota?: number
+    id?: number
+    username?: string
+    [key: string]: unknown
+  }
+  message?: string
+  success?: boolean
+}
+
 interface NewApiListResponse {
   data?: {
     page: number
@@ -161,6 +176,46 @@ export class NewApiTokenClient {
     }
 
     return null
+  }
+
+  async getBalance(
+    baseUrl: string,
+    sessionCookie: string,
+    userId: string,
+    proxy?: ProxyConfig
+  ): Promise<{ balance: number; used?: number; label: string; metadata?: Record<string, unknown> }> {
+    const normalizedBaseUrl = baseUrl.replace(/\/$/, '')
+    const headers = this.buildHeaders(normalizedBaseUrl, sessionCookie, userId)
+
+    const res = await this.fetch(`${normalizedBaseUrl}/api/user/self`, { method: 'GET', headers }, proxy)
+    if (!res.ok) {
+      throw new Error(`Failed to fetch user info (${res.status})`)
+    }
+
+    const json = (await res.json().catch(() => ({}))) as NewApiUserSelfResponse
+    if (json.success === false) {
+      throw new Error(json.message || 'Failed to fetch user info')
+    }
+
+    const data = json.data
+    if (!data || typeof data.quota !== 'number') {
+      throw new Error('Quota not found in /api/user/self response')
+    }
+
+    const quotaUsd = data.quota / QUOTA_PER_USD
+    const usedUsd = typeof data.used_quota === 'number' ? data.used_quota / QUOTA_PER_USD : undefined
+
+    const label =
+      usedUsd !== undefined
+        ? `$${quotaUsd.toFixed(4)} (used $${usedUsd.toFixed(4)})`
+        : `$${quotaUsd.toFixed(4)}`
+
+    return {
+      balance: quotaUsd,
+      used: usedUsd,
+      label,
+      metadata: data as Record<string, unknown>
+    }
   }
 
   private buildHeaders(baseUrl: string, sessionCookie: string, userId: string): Record<string, string> {

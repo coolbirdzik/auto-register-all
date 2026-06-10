@@ -538,6 +538,28 @@ export function registerIpcHandlers(deps: {
       const balance = await weiLaiApiKeyClient.getBalance(siteConfig.uiOrigin, account, proxy)
       const updated = await accountStore.update(account.id, {
         apiBalance: balance.balance,
+        apiUsedQuota: balance.used,
+        apiBalanceLabel: balance.label,
+        apiBalanceFetchedAt: new Date().toISOString()
+      })
+      return { account: updated, ...balance }
+    }
+
+    if (account.siteId === 'tokenlb') {
+      const sessionCookie =
+        (await readSessionCookie(account.browserProfileId, siteConfig.uiOrigin)) ||
+        (await loginNewApiAccount(account, siteConfig.uiOrigin))
+
+      const userId = await resolveNewApiUserId(account.browserProfileId, siteConfig.uiOrigin, sessionCookie)
+      if (!userId || !/^\d+$/.test(userId)) {
+        await browserPool.showProfile(account.browserProfileId)
+        throw new Error('New API user id was not found. Open the account profile and visit the keys page, then retry.')
+      }
+
+      const balance = await newApiTokenClient.getBalance(siteConfig.uiOrigin, sessionCookie, userId, proxy)
+      const updated = await accountStore.update(account.id, {
+        apiBalance: balance.balance,
+        apiUsedQuota: balance.used,
         apiBalanceLabel: balance.label,
         apiBalanceFetchedAt: new Date().toISOString()
       })
@@ -559,6 +581,7 @@ export function registerIpcHandlers(deps: {
     )
     const updated = await accountStore.update(account.id, {
       apiBalance: balance.balance,
+      apiUsedQuota: balance.used,
       apiBalanceLabel: balance.label,
       apiBalanceFetchedAt: new Date().toISOString()
     })

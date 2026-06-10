@@ -134,6 +134,7 @@ export interface AccountRecord {
   apiKeyGroupRateMultiplier?: number
   apiKeyGroupUpdatedAt?: string
   apiBalance?: number
+  apiUsedQuota?: number
   apiBalanceLabel?: string
   apiBalanceFetchedAt?: string
   error?: string
@@ -208,6 +209,7 @@ export interface GetApiKeyBalanceOptions {
 export interface GetApiKeyBalanceResult {
   account: AccountRecord
   balance: number
+  used?: number
   label: string
   metadata?: Record<string, unknown>
 }

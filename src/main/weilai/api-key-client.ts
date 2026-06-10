@@ -130,7 +130,7 @@ export class WeiLaiApiKeyClient {
     origin: string,
     account: AccountRecord,
     proxy?: ProxyConfig
-  ): Promise<{ balance: number; label: string; metadata?: Record<string, unknown> }> {
+  ): Promise<{ balance: number; used?: number; label: string; metadata?: Record<string, unknown> }> {
     if (!account.browserProfileId) throw new Error('Account has no browser profile for WeiLai balance lookup')
     const normalizedOrigin = origin.replace(/\/$/, '')
     console.log('[WeiLai Balance] start', {
@@ -421,7 +421,7 @@ export class WeiLaiApiKeyClient {
     }
   }
 
-  private parseBalance(data: unknown): { balance: number; label: string; metadata?: Record<string, unknown> } {
+  private parseBalance(data: unknown): { balance: number; used?: number; label: string; metadata?: Record<string, unknown> } {
     const metadata = data && typeof data === 'object' ? (data as Record<string, unknown>) : { value: data }
     const candidates: unknown[] = []
     const collect = (value: unknown, depth = 0): void => {
@@ -441,10 +441,20 @@ export class WeiLaiApiKeyClient {
       }
     }
     collect(data)
+
+    // Extract used quota if present (New-API compatible field)
+    let used: number | undefined
+    if (data && typeof data === 'object') {
+      const obj = data as Record<string, unknown>
+      const usedRaw = obj['used_quota'] ?? obj['usedQuota'] ?? obj['used_credit'] ?? obj['used']
+      if (typeof usedRaw === 'number' && Number.isFinite(usedRaw)) used = usedRaw
+    }
+
     for (const candidate of candidates) {
       const num = typeof candidate === 'number' ? candidate : Number(String(candidate).replace(/[^0-9.-]+/g, ''))
       if (Number.isFinite(num)) {
-        return { balance: num, label: `$${num.toFixed(4)}`, metadata }
+        const label = used !== undefined ? `$${num.toFixed(4)} (used $${used.toFixed(4)})` : `$${num.toFixed(4)}`
+        return { balance: num, used, label, metadata }
       }
     }
     console.log('[WeiLai Balance] parse-failed', metadata)
